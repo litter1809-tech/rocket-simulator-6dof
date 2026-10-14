@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rocket-simulator"
+version = "0.1.0"
+description = "Atmosphere and wind model for rocket flight simulations."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+]
+
+[project.scripts]
+rocket-sim = "simulator:main"
+
+[tool.setuptools]
+py-modules = ["simulator"]
