@@ -12,16 +12,14 @@ G0: float = 9.80665
 
 
 def _normalize_quaternion(q_quat: ArrayLike) -> NDArray[np.float64]:
-    """Normalize a scalar-first quaternion to unit magnitude."""
     q_quat = np.asarray(q_quat, dtype=float)
-    quaternion_norm = np.linalg.norm(q_quat)
-    if quaternion_norm == 0.0:
+    norm = np.linalg.norm(q_quat)
+    if norm == 0.0:
         raise ValueError("quaternion norm cannot be zero")
-    return q_quat / quaternion_norm
+    return q_quat / norm
 
 
 def _quat_multiply(q_left: ArrayLike, q_right: ArrayLike) -> NDArray[np.float64]:
-    """Multiply two scalar-first quaternions using the Hamilton product."""
     q_left = np.asarray(q_left, dtype=float)
     q_right = np.asarray(q_right, dtype=float)
     return np.array([
@@ -33,7 +31,6 @@ def _quat_multiply(q_left: ArrayLike, q_right: ArrayLike) -> NDArray[np.float64]
 
 
 def _quat_to_rotation_matrix(q_quat: ArrayLike) -> NDArray[np.float64]:
-    """Return the body-to-inertial direction-cosine matrix for a quaternion."""
     q_quat = _normalize_quaternion(q_quat)
     scalar, x, y, z = q_quat
     return np.array([
@@ -44,7 +41,6 @@ def _quat_to_rotation_matrix(q_quat: ArrayLike) -> NDArray[np.float64]:
 
 
 def _quat_derivative(q_quat: ArrayLike, omega_body: ArrayLike) -> NDArray[np.float64]:
-    """Evaluate quaternion kinematics: q_dot = 0.5 * q_quat tensor [0, omega]."""
     q_quat = _normalize_quaternion(q_quat)
     omega_body = np.asarray(omega_body, dtype=float)
     omega_quat = np.array([0.0, *omega_body], dtype=float)
@@ -57,84 +53,82 @@ def _aero_forces_and_moments(
     velocity_inertial_m_s: NDArray[np.float64],
     q_quat: NDArray[np.float64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
-    """Compute drag, lift, and aerodynamic moment from relative air velocity."""
-    altitude_m = max(float(position_inertial_m[2]), 0.0)
-    rho = density(altitude_m)
-    wind_velocity_inertial_m_s = np.asarray(wind_velocity(altitude_m), dtype=float)
-    velocity_relative_inertial_m_s = velocity_inertial_m_s - wind_velocity_inertial_m_s
-    speed_relative_m_s = np.linalg.norm(velocity_relative_inertial_m_s)
-    if speed_relative_m_s < 1e-12:
+    alt = max(float(position_inertial_m[2]), 0.0)
+    rho = density(alt)
+    wind = np.asarray(wind_velocity(alt), dtype=float)
+    v_rel = velocity_inertial_m_s - wind
+    speed = np.linalg.norm(v_rel)
+    if speed < 1e-12:
         zero_force = np.zeros(3, dtype=float)
         return zero_force, zero_force.copy(), zero_force.copy()
 
-    C_body_to_inertial = _quat_to_rotation_matrix(q_quat)
-    velocity_relative_body_m_s = C_body_to_inertial.T @ velocity_relative_inertial_m_s
-    angle_of_attack_rad = float(np.arctan2(velocity_relative_body_m_s[2], velocity_relative_body_m_s[0]))
-    q_inf = 0.5 * rho * speed_relative_m_s**2
-    reference_area_m2 = rocket.reference_area
-    C_d = 0.5 + 2.0 * angle_of_attack_rad**2
-    C_l = 2.0 * np.pi * angle_of_attack_rad
+    C_bi = _quat_to_rotation_matrix(q_quat)
+    v_body = C_bi.T @ v_rel
+    alpha = float(np.arctan2(v_body[2], v_body[0]))
+    qbar = 0.5 * rho * speed**2
+    area = rocket.reference_area
+    cd = 0.5 + 2.0 * alpha**2
+    cl = 2.0 * np.pi * alpha
 
-    velocity_unit_body = velocity_relative_body_m_s / speed_relative_m_s
-    F_drag_body = -q_inf * reference_area_m2 * C_d * velocity_unit_body
-    lift_direction_body = np.array([0.0, 0.0, 1.0], dtype=float)
-    F_lift_body = -q_inf * reference_area_m2 * C_l * lift_direction_body
-    F_drag_inertial = C_body_to_inertial @ F_drag_body
-    F_lift_inertial = C_body_to_inertial @ F_lift_body
+    v_hat = v_body / speed
+    drag_body = -qbar * area * cd * v_hat
+    lift_dir = np.array([0.0, 0.0, 1.0], dtype=float)
+    lift_body = -qbar * area * cl * lift_dir
+    drag = C_bi @ drag_body
+    lift = C_bi @ lift_body
 
-    moment_arm_m = 0.15
-    M_aero_body = np.array([
+    # Fixed arm and simple coefficients; replace with vehicle aero data when available.
+    moment_arm = 0.15
+    moment = np.array([
         0.0,
-        -q_inf * reference_area_m2 * moment_arm_m * C_l,
+        -qbar * area * moment_arm * cl,
         0.0,
     ], dtype=float)
-    return F_drag_inertial, F_lift_inertial, M_aero_body
+    return drag, lift, moment
 
 
 def rocket_state_derivative(t: float, y: ArrayLike, rocket: Rocket) -> NDArray[np.float64]:
-    """Evaluate translational Newton and rotational Euler equations for a 13-state vehicle."""
-    state_vector = np.asarray(y, dtype=float)
-    if state_vector.shape != (13,):
-        raise ValueError(f"state vector must have shape (13,), got {state_vector.shape}")
+    """Return the derivative of the 13-state 6-DoF vehicle model."""
+    state = np.asarray(y, dtype=float)
+    if state.shape != (13,):
+        raise ValueError(f"state vector must have shape (13,), got {state.shape}")
 
-    position_inertial_m = state_vector[0:3]
-    velocity_inertial_m_s = state_vector[3:6]
-    q_quat = _normalize_quaternion(state_vector[6:10])
-    omega_body_rad_s = state_vector[10:13]
+    pos = state[0:3]
+    vel = state[3:6]
+    quat = _normalize_quaternion(state[6:10])
+    omega = state[10:13]
 
     rocket.update(t)
     m = rocket.mass
-    I_matrix = rocket.inertia_matrix()
+    inertia = rocket.inertia_matrix()
 
-    F_gravity_inertial = np.array([0.0, 0.0, -G0 * m], dtype=float)
-    C_body_to_inertial = _quat_to_rotation_matrix(q_quat)
-    F_thrust_body = np.array([0.0, 0.0, rocket.thrust], dtype=float)
-    F_thrust_inertial = C_body_to_inertial @ F_thrust_body
+    gravity = np.array([0.0, 0.0, -G0 * m], dtype=float)
+    C_bi = _quat_to_rotation_matrix(quat)
+    thrust_body = np.array([0.0, 0.0, rocket.thrust], dtype=float)
+    thrust = C_bi @ thrust_body
 
-    F_drag_inertial, F_lift_inertial, M_aero_body = _aero_forces_and_moments(
-        rocket, position_inertial_m, velocity_inertial_m_s, q_quat
-    )
-    F_total_inertial = F_gravity_inertial + F_thrust_inertial + F_drag_inertial + F_lift_inertial
+    drag, lift, moment = _aero_forces_and_moments(rocket, pos, vel, quat)
+    force = gravity + thrust + drag + lift
 
-    acceleration_inertial_m_s2 = F_total_inertial / m
-    angular_momentum_body = I_matrix @ omega_body_rad_s
-    angular_acceleration_body_rad_s2 = np.linalg.solve(
-        I_matrix,
-        M_aero_body - np.cross(omega_body_rad_s, angular_momentum_body),
+    accel = force / m
+    angular_momentum = inertia @ omega
+    angular_accel = np.linalg.solve(
+        inertia,
+        moment - np.cross(omega, angular_momentum),
     )
 
-    state_derivative = np.empty(13, dtype=float)
-    state_derivative[0:3] = velocity_inertial_m_s
-    state_derivative[3:6] = acceleration_inertial_m_s2
-    state_derivative[6:10] = _quat_derivative(q_quat, omega_body_rad_s)
-    state_derivative[10:13] = angular_acceleration_body_rad_s2
-    return state_derivative
+    derivative = np.empty(13, dtype=float)
+    derivative[0:3] = vel
+    derivative[3:6] = accel
+    derivative[6:10] = _quat_derivative(quat, omega)
+    derivative[10:13] = angular_accel
+    return derivative
 
 
 def ground_impact(t: float, y: ArrayLike) -> float:
-    """Return altitude for the terminal ground-contact event after launch."""
-    altitude_m = float(np.asarray(y, dtype=float)[2])
-    return 1.0 if t <= 0.0 else altitude_m
+    """Altitude event used to stop integration at ground contact."""
+    alt = float(np.asarray(y, dtype=float)[2])
+    return 1.0 if t <= 0.0 else alt
 
 
 ground_impact.terminal = True
@@ -146,7 +140,7 @@ def simulate_rocket(
     initial_state: ArrayLike | None = None,
     t_span: tuple[float, float] = (0.0, 30.0),
 ) -> OptimizeResult:
-    """Integrate the 6-DoF state with RK45 and terminate at ground impact."""
+    """Integrate the 6-DoF state with RK45 until ground impact."""
     if initial_state is None:
         initial_state = np.array([
             0.0, 0.0, 0.0,
@@ -155,14 +149,14 @@ def simulate_rocket(
             0.0, 0.0, 0.0,
         ], dtype=float)
 
-    initial_state_vector = np.asarray(initial_state, dtype=float)
-    if initial_state_vector.shape != (13,):
-        raise ValueError(f"initial_state must have shape (13,), got {initial_state_vector.shape}")
+    y0 = np.asarray(initial_state, dtype=float)
+    if y0.shape != (13,):
+        raise ValueError(f"initial_state must have shape (13,), got {y0.shape}")
 
     return solve_ivp(
         fun=lambda t, y: rocket_state_derivative(t, y, rocket),
         t_span=t_span,
-        y0=initial_state_vector,
+        y0=y0,
         method="RK45",
         rtol=1e-6,
         atol=1e-8,

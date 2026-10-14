@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 
 @dataclass
 class Rocket:
-    """Single-stage vehicle with constant thrust and linearly depleted propellant."""
+    """Single-stage rocket with constant thrust and linear propellant burn."""
 
     dry_mass: float
     propellant_mass: float
@@ -34,18 +34,16 @@ class Rocket:
         self.update(0.0)
 
     def update(self, t: float) -> tuple[float, float]:
-        """Update total mass and thrust from elapsed motor burn time."""
         t = float(t)
         if not t >= 0.0:
             raise ValueError(f"flight time must be >= 0 (got {t!r})")
-        burn_fraction = min(t / self.burn_time, 1.0)
+        burned = min(t / self.burn_time, 1.0)
         self.time = t
-        self.mass = self.dry_mass + self.propellant_mass * (1.0 - burn_fraction)
+        self.mass = self.dry_mass + self.propellant_mass * (1.0 - burned)
         self.thrust = float(self.average_thrust) if t < self.burn_time else 0.0
         return self.mass, self.thrust
 
     def inertia_matrix(self) -> NDArray[np.float64]:
-        """Return the isotropic inertia tensor scaled from wet to current mass."""
-        wet_mass_kg = self.dry_mass + self.propellant_mass
-        mass_ratio = self.mass / wet_mass_kg if wet_mass_kg > 0.0 else 1.0
-        return np.eye(3, dtype=float) * self.moment_of_inertia * mass_ratio
+        wet_mass = self.dry_mass + self.propellant_mass
+        mass_scale = self.mass / wet_mass if wet_mass > 0.0 else 1.0
+        return np.eye(3, dtype=float) * self.moment_of_inertia * mass_scale

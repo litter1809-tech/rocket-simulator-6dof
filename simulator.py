@@ -1,42 +1,5 @@
   #!/usr/bin/env python3
-"""
-atmosphere.py - U.S. Standard Atmosphere (1976) model for 0-20,000 m, plus a
-simple analytic wind-profile model.
-
-All functions are vectorised with NumPy: pass a scalar or any array-like of
-geometric altitudes (metres above mean sea level).
-
-    geopotential_altitude(h)   geometric -> geopotential altitude        [m]
-    temperature(h)             air temperature, T                        [K]
-    pressure(h)                static pressure, P                        [Pa]
-    density(h)                 air density, rho                          [kg/m^3]
-    speed_of_sound(h)          speed of sound, a                         [m/s]
-    standard_atmosphere(h)     all of the above in one named tuple
-    wind_velocity(h, ...)      wind vector [X, Y, Z] = [east, north, up] [m/s]
-
-Model
------
-The atmosphere is split into layers in which temperature varies linearly with
-geopotential altitude H:
-
-    T = Tb + L * (H - Hb)
-
-    0 - 11 km    troposphere          L = -6.5 K/km
-    11 - 20 km   lower stratosphere   L =  0  (isothermal)
-
-Pressure follows from hydrostatic balance and the ideal gas law:
-
-    L != 0:  P = Pb * (T / Tb) ** (-g0 / (R * L))
-    L == 0:  P = Pb * exp(-g0 * (H - Hb) / (R * Tb))
-
-and then
-
-    rho = P / (R * T)              (ideal gas law)
-    a   = sqrt(gamma * R * T)      (speed of sound)
-
-Run `python atmosphere.py` for a demo table and a self-check against
-published reference values.
-"""
+"""Atmosphere, vehicle, and 6-DoF rocket flight model."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -50,9 +13,6 @@ from numpy.typing import ArrayLike, NDArray
 from scipy.integrate import solve_ivp
 from scipy.spatial.transform import Rotation as R
 
-# --------------------------------------------------------------------------- #
-# 1. Constants and layer definitions
-# --------------------------------------------------------------------------- #
 G0 = 9.80665                  # standard gravity                         [m/s^2]
 R_STAR = 8.31432              # universal gas constant                   [J/(mol K)]
 M0 = 0.0289644                # mean molar mass of dry air at sea level  [kg/mol]
@@ -69,18 +29,16 @@ H_MIN, H_MAX = 0.0, 20_000.0  # supported geometric-altitude range       [m]
 _LAYERS = np.array([
     [0.0,      288.15, -0.0065],   # troposphere
     [11_000.0, 216.65,  0.0000],   # lower stratosphere (isothermal)
-    # [20_000.0, 216.65, 0.0010],  # next layer up: add rows like this (and raise H_MAX) to extend
 ])
+# Add layers here if H_MAX is raised.
 _HB, _TB, _LAPSE = _LAYERS.T
 
 
 def _layer_temperature(H, Hb, Tb, L):
-    """Temperature inside a layer: linear in geopotential altitude."""
     return Tb + L * (H - Hb)
 
 
 def _layer_pressure(H, Hb, Tb, L, Pb):
-    """Pressure at geopotential altitude H inside a layer starting at (Hb, Tb, Pb)."""
     T = _layer_temperature(H, Hb, Tb, L)
     safe_L = np.where(L == 0.0, 1.0, L)      # dummy value: the unused branch must not divide by 0
     gradient = Pb * (T / Tb) ** (-G0 / (R_AIR * safe_L))
@@ -89,7 +47,6 @@ def _layer_pressure(H, Hb, Tb, L, Pb):
 
 
 def _build_base_pressures() -> NDArray[np.float64]:
-    """Chain the layers: each layer's base pressure is the previous layer's top pressure."""
     Pb = np.empty(len(_LAYERS))
     Pb[0] = P_SEA_LEVEL
     for i in range(1, len(_LAYERS)):
@@ -100,16 +57,11 @@ def _build_base_pressures() -> NDArray[np.float64]:
 _PB = _build_base_pressures()
 
 
-# --------------------------------------------------------------------------- #
-# 2. Helpers
-# --------------------------------------------------------------------------- #
 def _unwrap(x):
-    """0-d arrays -> plain NumPy scalars; arrays pass through unchanged."""
     return np.asarray(x)[()]
 
 
 def _as_altitude(h: ArrayLike) -> NDArray[np.float64]:
-    """Convert input to a float array and check it lies within [H_MIN, H_MAX]."""
     h = np.asarray(h, dtype=float)
     if not np.all((h >= H_MIN) & (h <= H_MAX)):          # NaN fails this test too
         raise ValueError(
@@ -119,20 +71,18 @@ def _as_altitude(h: ArrayLike) -> NDArray[np.float64]:
 
 
 def geopotential_altitude(h: ArrayLike) -> NDArray[np.float64]:
-    """Geometric altitude h -> geopotential altitude H = r0*h / (r0 + h)  [m]."""
+    """Convert geometric to geopotential altitude."""
     h = _as_altitude(h)
     return R_EARTH * h / (R_EARTH + h)
 
 
 def _temperature_pressure(H):
-    """Core of the model: (T, P) at geopotential altitude H, looked up from the layer table."""
     i = np.searchsorted(_HB, H, side="right") - 1        # layer index for each altitude
     Hb, Tb, L, Pb = _HB[i], _TB[i], _LAPSE[i], _PB[i]
     return _layer_temperature(H, Hb, Tb, L), _layer_pressure(H, Hb, Tb, L, Pb)
 
 
 def _state(h: ArrayLike):
-    """(T, P) for geometric altitude h, with scalar input giving scalar output."""
     T, P = _temperature_pressure(geopotential_altitude(h))
     return _unwrap(T), _unwrap(P)
 
@@ -145,11 +95,8 @@ def _sound_speed(T):
     return np.sqrt(GAMMA * R_AIR * T)
 
 
-# --------------------------------------------------------------------------- #
-# 3. Public atmosphere API
-# --------------------------------------------------------------------------- #
 class AtmosphereState(NamedTuple):
-    """Atmospheric properties at one or more altitudes."""
+    """Atmosphere values at one or more altitudes."""
     altitude: NDArray[np.float64] | float         # geometric altitude    [m]
     temperature: NDArray[np.float64] | float      # T                     [K]
     pressure: NDArray[np.float64] | float         # P                     [Pa]
@@ -158,37 +105,34 @@ class AtmosphereState(NamedTuple):
 
 
 def temperature(h: ArrayLike):
-    """Air temperature T [K] at geometric altitude h [m]."""
+    """Air temperature [K]."""
     return _state(h)[0]
 
 
 def pressure(h: ArrayLike):
-    """Static pressure P [Pa] at geometric altitude h [m]."""
+    """Static pressure [Pa]."""
     return _state(h)[1]
 
 
 def density(h: ArrayLike):
-    """Air density rho [kg/m^3] at geometric altitude h [m]."""
+    """Air density [kg/m^3]."""
     T, P = _state(h)
     return _density(P, T)
 
 
 def speed_of_sound(h: ArrayLike):
-    """Speed of sound a [m/s] at geometric altitude h [m]."""
+    """Speed of sound [m/s]."""
     T, _ = _state(h)
     return _sound_speed(T)
 
 
 def standard_atmosphere(h: ArrayLike) -> AtmosphereState:
-    """All atmospheric properties at geometric altitude h [m] (0 - 20,000 m)."""
+    """Return temperature, pressure, density, and sound speed."""
     h = _as_altitude(h)
     T, P = _state(h)
     return AtmosphereState(_unwrap(h), T, P, _density(P, T), _sound_speed(T))
 
 
-# --------------------------------------------------------------------------- #
-# 4. Wind model
-# --------------------------------------------------------------------------- #
 def wind_velocity(
     h: ArrayLike,
     *,
@@ -199,28 +143,7 @@ def wind_velocity(
     vertical_amplitude: float = 0.3,                   # peak vertical wind [m/s]
     vertical_wavelength: float = 8_000.0,              # altitude period of vertical wind [m]
 ) -> NDArray[np.float64]:
-    """
-    Simple wind-velocity model. Returns [X, Y, Z] in m/s, with X = east,
-    Y = north, Z = up.
-
-    Horizontal wind is a constant background wind plus a jet-stream bump: a
-    Gaussian in altitude centred near the tropopause.
-
-        g(h) = exp(-0.5 * ((h - jet_altitude) / jet_width) ** 2)
-        X(h) = surface_wind[0] + jet_wind[0] * g(h)
-        Y(h) = surface_wind[1] + jet_wind[1] * g(h)
-
-    Vertical wind is a small sinusoid that is zero at the ground:
-
-        Z(h) = vertical_amplitude * sin(2 * pi * h / vertical_wavelength)
-
-    The result has shape (..., 3): one [X, Y, Z] row per input altitude, so a
-    scalar altitude gives shape (3,) and N altitudes give shape (N, 3).
-
-    The profile is illustrative rather than a standard model. Tune the keyword
-    arguments, or swap the body for interpolated measurements (radiosonde,
-    reanalysis, ...) without changing the signature.
-    """
+    """Return the illustrative east-north-up wind profile [m/s]."""
     h = _as_altitude(h)
     g = np.exp(-0.5 * ((h - jet_altitude) / jet_width) ** 2)     # 0..1 bump around the jet core
     x = surface_wind[0] + jet_wind[0] * g
@@ -229,34 +152,9 @@ def wind_velocity(
     return np.stack([x, y, z], axis=-1)
 
 
-# --------------------------------------------------------------------------- #
-# 5. Rocket vehicle
-# --------------------------------------------------------------------------- #
 @dataclass
 class Rocket:
-    """
-    Single-stage rocket with a constant-thrust motor. All quantities are SI.
-
-    Fixed parameters (constructor arguments):
-        dry_mass            mass with no propellant                      [kg]
-        propellant_mass     propellant mass at ignition                  [kg]
-        burn_time           motor burn duration                          [s]
-        average_thrust      constant thrust force while the motor burns  [N]
-        reference_area      cross-sectional area used for drag           [m^2]
-        drag_coefficient    drag coefficient based on reference_area     [-]
-        moment_of_inertia   moment of inertia (held constant)            [kg m^2]
-
-    Time-dependent state (refreshed by update(); flight time 0 = ignition):
-        time                flight time of the latest update             [s]
-        mass                current total mass                           [kg]
-        thrust              current thrust force                         [N]
-
-    Example:
-        rocket = Rocket(dry_mass=12.0, propellant_mass=3.0, burn_time=5.0,
-                        average_thrust=1200.0, reference_area=0.00785,
-                        drag_coefficient=0.5, moment_of_inertia=8.0)
-        mass, thrust = rocket.update(2.0)
-    """
+    """Single-stage rocket with constant thrust and linear propellant burn."""
 
     dry_mass: float
     propellant_mass: float
@@ -283,21 +181,7 @@ class Rocket:
         self.update(0.0)                          # start at ignition: full mass, full thrust
 
     def update(self, t: float) -> tuple[float, float]:
-        """
-        Update `mass` and `thrust` for flight time t [s] (t = 0 is ignition)
-        and return (mass, thrust).
-
-        The motor burns at constant thrust and constant mass-flow rate:
-
-            0 <= t < burn_time:  thrust = average_thrust
-                                 mass   = dry_mass + propellant_mass * (1 - t / burn_time)
-            t >= burn_time:      thrust = 0 (motor burnt out)
-                                 mass   = dry_mass
-
-        The result depends only on t, never on earlier calls, so update() can be
-        called in any order or at any time (e.g. at the sub-steps of a
-        Runge-Kutta integrator). Negative or NaN times raise ValueError.
-        """
+        """Refresh mass and thrust for elapsed flight time t."""
         t = float(t)
         if not t >= 0.0:                          # also rejects NaN
             raise ValueError(f"flight time must be >= 0 (got {t!r})")
@@ -308,15 +192,11 @@ class Rocket:
         return self.mass, self.thrust
 
     def inertia_matrix(self) -> NDArray[np.float64]:
-        """Dynamic inertia tensor [kg m^2] for a mass that shrinks from wet to dry."""
         wet_mass = self.dry_mass + self.propellant_mass
         scale = self.mass / wet_mass if wet_mass > 0.0 else 1.0
         return np.eye(3, dtype=float) * self.moment_of_inertia * scale
 
 
-# --------------------------------------------------------------------------- #
-# 6. 6-DoF translational/rotational dynamics
-# --------------------------------------------------------------------------- #
 def _normalize_quaternion(q: ArrayLike) -> NDArray[np.float64]:
     q = np.asarray(q, dtype=float)
     norm = np.linalg.norm(q)
@@ -364,7 +244,6 @@ def _aero_forces_and_moments(
     velocity_inertial: NDArray[np.float64],
     q: NDArray[np.float64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], float, float, float]:
-    """Compute aerodynamic force/moment from inertial velocity and the current quaternion."""
     altitude = max(float(position[2]), 0.0)
     rho = density(altitude)
     a = speed_of_sound(altitude)
@@ -390,6 +269,7 @@ def _aero_forces_and_moments(
     F_aero_body = drag_body + lift_body
     F_aero_inertial = R_b2i @ F_aero_body
 
+    # Fixed moment arm and simple coefficients; swap in vehicle aero data when available.
     moment_arm = 0.15
     moment_body = np.array([
         0.0,
@@ -404,7 +284,7 @@ def rocket_state_derivative(
     y: ArrayLike,
     rocket: Rocket,
 ) -> NDArray[np.float64]:
-    """State derivative for a 13-element 6-DoF rocket state vector."""
+    """Return the derivative of the 13-state 6-DoF model."""
     y = np.asarray(y, dtype=float)
     if y.shape[0] != 13:
         raise ValueError(f"state vector must have length 13, got {y.shape[0]}")
@@ -441,7 +321,7 @@ def rocket_state_derivative(
 
 
 def ground_impact(t: float, y: ArrayLike) -> float:
-    """Terminal event: stop when the rocket reaches the ground after launch."""
+    """Altitude event used to stop integration at ground contact."""
     z = float(np.asarray(y, dtype=float)[2])
     return 1.0 if t <= 0.0 else z
 
@@ -455,7 +335,7 @@ def simulate_rocket(
     initial_state: ArrayLike | None = None,
     t_span: tuple[float, float] = (0.0, 30.0),
 ) -> object:
-    """Integrate a 6-DoF rocket trajectory with RK45 from an initial 13-element state."""
+    """Integrate a 6-DoF trajectory with RK45 until ground impact."""
     if initial_state is None:
         initial_state = np.array([
             0.0, 0.0, 0.0,
@@ -482,7 +362,6 @@ def simulate_rocket(
 
 
 def _flight_metrics(sol: object, rocket: Rocket) -> dict[str, float]:
-    """Summary metrics derived from the RK45 solution."""
     if not hasattr(sol, 'y') or sol.y.size == 0:
         raise ValueError("simulation produced no trajectory data")
 
@@ -522,7 +401,6 @@ def _flight_metrics(sol: object, rocket: Rocket) -> dict[str, float]:
 
 
 def _plot_performance_dashboard(sol: object, rocket: Rocket) -> None:
-    """Create a clean 2x2 Matplotlib dashboard and save it to disk."""
     t = np.asarray(sol.t, dtype=float)
     x = np.asarray(sol.y[0], dtype=float)
     y = np.asarray(sol.y[1], dtype=float)
@@ -599,11 +477,7 @@ def _plot_performance_dashboard(sol: object, rocket: Rocket) -> None:
     print(f"\nSaved performance dashboard to {output_path}")
 
 
-# --------------------------------------------------------------------------- #
-# 7. Self-checks and demo
-# --------------------------------------------------------------------------- #
 def _self_check() -> None:
-    """Assert agreement with published U.S. Standard Atmosphere 1976 values."""
     # Layer-boundary values at geopotential altitude H: (H [m], T [K], P [Pa]).
     for H, T_ref, P_ref in [
         (0.0, 288.15, 101_325.0),
@@ -624,7 +498,6 @@ def _self_check() -> None:
 
 
 def _self_check_rocket() -> None:
-    """Assert the basic mass/thrust behaviour of Rocket.update."""
     r = Rocket(dry_mass=10.0, propellant_mass=4.0, burn_time=2.0, average_thrust=500.0,
                reference_area=0.01, drag_coefficient=0.4, moment_of_inertia=2.0)
     np.testing.assert_allclose([r.mass, r.thrust], [14.0, 500.0], rtol=1e-12)   # at ignition

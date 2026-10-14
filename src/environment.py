@@ -20,6 +20,7 @@ _LAYERS: NDArray[np.float64] = np.array([
     [0.0, 288.15, -0.0065],
     [11_000.0, 216.65, 0.0000],
 ])
+# Extend this table and H_MAX together if the model needs to cover higher altitudes.
 _HB, _TB, _LAPSE = _LAYERS.T
 
 
@@ -29,7 +30,6 @@ def _layer_temperature(
     Tb: NDArray[np.float64] | np.float64,
     L: NDArray[np.float64] | np.float64,
 ) -> NDArray[np.float64] | np.float64:
-    """Evaluate the ISA 1976 linear temperature profile within a layer."""
     return Tb + L * (H - Hb)
 
 
@@ -40,12 +40,11 @@ def _layer_pressure(
     L: NDArray[np.float64] | np.float64,
     Pb: NDArray[np.float64] | np.float64,
 ) -> NDArray[np.float64] | np.float64:
-    """Evaluate hydrostatic pressure for gradient and isothermal ISA layers."""
-    temperature_K = _layer_temperature(H, Hb, Tb, L)
-    safe_lapse_rate = np.where(L == 0.0, 1.0, L)
-    pressure_gradient = Pb * (temperature_K / Tb) ** (-G0 / (R_AIR * safe_lapse_rate))
-    pressure_isothermal = Pb * np.exp(-G0 * (H - Hb) / (R_AIR * Tb))
-    return np.where(L == 0.0, pressure_isothermal, pressure_gradient)
+    temp = _layer_temperature(H, Hb, Tb, L)
+    safe_lapse = np.where(L == 0.0, 1.0, L)
+    p_gradient = Pb * (temp / Tb) ** (-G0 / (R_AIR * safe_lapse))
+    p_isothermal = Pb * np.exp(-G0 * (H - Hb) / (R_AIR * Tb))
+    return np.where(L == 0.0, p_isothermal, p_gradient)
 
 
 def _build_base_pressures() -> NDArray[np.float64]:
@@ -75,53 +74,53 @@ def _as_altitude(h: ArrayLike) -> NDArray[np.float64]:
 
 
 def geopotential_altitude(h: ArrayLike) -> NDArray[np.float64]:
-    """Convert geometric altitude to geopotential altitude for the ISA model."""
-    altitude_m = _as_altitude(h)
-    return R_EARTH * altitude_m / (R_EARTH + altitude_m)
+    """Convert geometric altitude to geopotential altitude."""
+    alt = _as_altitude(h)
+    return R_EARTH * alt / (R_EARTH + alt)
 
 
 def _temperature_pressure(
     geopotential_altitude_m: NDArray[np.float64] | np.float64,
 ) -> tuple[NDArray[np.float64] | np.float64, NDArray[np.float64] | np.float64]:
     layer_index = np.searchsorted(_HB, geopotential_altitude_m, side="right") - 1
-    base_altitude_m = _HB[layer_index]
-    base_temperature_K = _TB[layer_index]
-    lapse_rate_K_m = _LAPSE[layer_index]
-    base_pressure_Pa = _PB[layer_index]
-    temperature_K = _layer_temperature(
-        geopotential_altitude_m, base_altitude_m, base_temperature_K, lapse_rate_K_m
+    base_alt = _HB[layer_index]
+    base_temp = _TB[layer_index]
+    lapse = _LAPSE[layer_index]
+    base_pressure = _PB[layer_index]
+    temp = _layer_temperature(
+        geopotential_altitude_m, base_alt, base_temp, lapse
     )
-    pressure_Pa = _layer_pressure(
+    pressure = _layer_pressure(
         geopotential_altitude_m,
-        base_altitude_m,
-        base_temperature_K,
-        lapse_rate_K_m,
-        base_pressure_Pa,
+        base_alt,
+        base_temp,
+        lapse,
+        base_pressure,
     )
-    return temperature_K, pressure_Pa
+    return temp, pressure
 
 
 def _state(
     altitude_m: ArrayLike,
 ) -> tuple[NDArray[np.float64] | np.float64, NDArray[np.float64] | np.float64]:
-    temperature_K, pressure_Pa = _temperature_pressure(geopotential_altitude(altitude_m))
-    return _unwrap(temperature_K), _unwrap(pressure_Pa)
+    temp, pressure = _temperature_pressure(geopotential_altitude(altitude_m))
+    return _unwrap(temp), _unwrap(pressure)
 
 
 def density(h: ArrayLike) -> NDArray[np.float64] | np.float64:
-    """Return ISA 1976 air density in kg/m^3 for geometric altitude in metres."""
-    temperature_K, pressure_Pa = _state(h)
-    return pressure_Pa / (R_AIR * temperature_K)
+    """Air density [kg/m^3] at geometric altitude in metres."""
+    temp, pressure = _state(h)
+    return pressure / (R_AIR * temp)
 
 
 def speed_of_sound(h: ArrayLike) -> NDArray[np.float64] | np.float64:
-    """Return the ideal-gas speed of sound in m/s for geometric altitude."""
-    temperature_K, _ = _state(h)
-    return np.sqrt(GAMMA * R_AIR * temperature_K)
+    """Speed of sound [m/s] at geometric altitude."""
+    temp, _ = _state(h)
+    return np.sqrt(GAMMA * R_AIR * temp)
 
 
 class AtmosphereState(NamedTuple):
-    """ISA atmospheric properties at one or more geometric altitudes."""
+    """Atmospheric properties at one or more geometric altitudes."""
 
     altitude: NDArray[np.float64] | np.float64
     temperature: NDArray[np.float64] | np.float64
@@ -131,23 +130,23 @@ class AtmosphereState(NamedTuple):
 
 
 def temperature(h: ArrayLike) -> NDArray[np.float64] | np.float64:
-    """Return ISA 1976 air temperature in kelvin."""
+    """Air temperature [K]."""
     return _state(h)[0]
 
 
 def pressure(h: ArrayLike) -> NDArray[np.float64] | np.float64:
-    """Return ISA 1976 static pressure in pascals."""
+    """Static pressure [Pa]."""
     return _state(h)[1]
 
 
 def standard_atmosphere(h: ArrayLike) -> AtmosphereState:
-    """Return ISA 1976 temperature, pressure, density, and sound speed."""
+    """Return temperature, pressure, density, and sound speed."""
     altitude_m = _as_altitude(h)
-    temperature_K, pressure_Pa = _state(altitude_m)
+    temp, pressure = _state(altitude_m)
     return AtmosphereState(
         _unwrap(altitude_m),
-        temperature_K,
-        pressure_Pa,
+        temp,
+        pressure,
         density(altitude_m),
         speed_of_sound(altitude_m),
     )
@@ -163,10 +162,10 @@ def wind_velocity(
     vertical_amplitude: float = 0.3,
     vertical_wavelength: float = 8_000.0,
 ) -> NDArray[np.float64]:
-    """Return the configured east-north-up wind vector in m/s."""
-    altitude_m = _as_altitude(h)
-    jet_profile = np.exp(-0.5 * ((altitude_m - jet_altitude) / jet_width) ** 2)
-    wind_east_m_s = surface_wind[0] + jet_wind[0] * jet_profile
-    wind_north_m_s = surface_wind[1] + jet_wind[1] * jet_profile
-    wind_up_m_s = vertical_amplitude * np.sin(2.0 * np.pi * altitude_m / vertical_wavelength)
-    return np.stack([wind_east_m_s, wind_north_m_s, wind_up_m_s], axis=-1)
+    """East-north-up wind vector [m/s]."""
+    alt = _as_altitude(h)
+    jet = np.exp(-0.5 * ((alt - jet_altitude) / jet_width) ** 2)
+    east = surface_wind[0] + jet_wind[0] * jet
+    north = surface_wind[1] + jet_wind[1] * jet
+    up = vertical_amplitude * np.sin(2.0 * np.pi * alt / vertical_wavelength)
+    return np.stack([east, north, up], axis=-1)
