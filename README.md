@@ -1,48 +1,68 @@
-# 6-DOF Rocket Trajectory Simulation Engine
+[README.md](https://github.com/user-attachments/files/33411123/README.md)
+# 6-DOF Rocket Trajectory Simulation
 
-A modular, high-fidelity 6-Degrees-of-Freedom (6-DOF) flight dynamics simulator engineered in Python. Designed to model full three-dimensional rigid-body rocket flight—including variable mass depletion, aerodynamic moments, altitude-dependent atmospheric properties, and numerical integration—complete with automated test suites and performance visualization.
+A Python simulation for modeling 6-DOF rocket flight dynamics. I built this to move away from messy single-script prototypes and structure it as a clean, tested engineering package. It handles altitude-dependent atmospheric physics, variable mass depletion during motor burn, and adaptive numerical integration.
 
----
+## Features
 
-## Project Structure
+- **Modular Layout:** Code is split into a dedicated `src/` directory separating the environment, vehicle specs, equations of motion, and plotting tools.
+- **Atmospheric Model:** Uses the 1976 US Standard Atmosphere to calculate temperature, pressure, density, and speed of sound at varying altitudes.
+- **Variable Mass & Thrust:** Tracks propellant burnout over time, switching cleanly from powered ascent to a coasting flight phase.
+- **Numerical Integration:** Uses `scipy.integrate.solve_ivp` with RK45 to step through the trajectory equations.
+- **Testing:** Includes basic unit tests via `pytest` to make sure the atmosphere calculations match reference values.
+- **Telemetry Output:** Automatically plots and saves a performance dashboard (`rocket_performance_dashboard.png`) after every run.
 
+## Repository Layout
+
+```
 rocket_simulator/
 ├── src/
 │   ├── __init__.py
-│   ├── environment.py    # 1976 US Standard Atmosphere & altitude-based wind modeling
-│   ├── vehicle.py        # Rocket mass properties, geometry, and time-varying thrust profile
-│   ├── physics.py        # 6-DOF equations of motion, force/moment summation, and kinematics
-│   └── dashboard.py      # Automated trajectory plotting and performance metrics generation
+│   ├── environment.py   # Atmosphere lookup & wind models
+│   ├── vehicle.py       # Mass, geometry, and motor data
+│   ├── physics.py       # Equations of motion & integration
+│   └── dashboard.py     # Matplotlib plotting scripts
 ├── tests/
-│   └── test_atmosphere.py# Pytest suite verifying atmospheric reference values
-├── main.py               # End-to-end simulation execution entry point
-├── simulator.py          # Core simulation orchestrator, state wrapper, and event handling
-├── pyproject.toml        # Project metadata and test runner configuration
-├── requirements.txt      # Core runtime and development dependencies
-├── rocket_sim_log.txt    # Text-based flight telemetry and event logs
-└── rocket_performance_dashboard.png # Multi-panel performance and trajectory visualization
+│   ├── __init__.py
+│   └── test_atmosphere.py # Unit tests for atmospheric verification
+├── main.py              # Entry point to run the full simulation
+├── pyproject.toml       # Build system config
+├── requirements.txt     # Python dependencies
+└── README.md
+```
 
-Technical Highlights
+## Running the Project
 
-Atmospheric Modeling (environment.py): Implements the 1976 US Standard Atmosphere model across troposphere and stratosphere layers to compute temperature, pressure, density ($\rho$), and speed of sound ($a$), coupled with configurable wind profiles.
+Clone the repo, install the requirements, and run the simulation:
 
-Flight Dynamics & Rigid-Body Physics (physics.py & vehicle.py): Solves coupled translational and rotational equations of motion, accounting for gravity vectors, aerodynamic forces/moments, and real-time variable mass depletion during motor burnout.
-
-Simulation Orchestration (simulator.py): Manages state vector initialization, physical parameter lookups, and solver execution boundaries.Numerical Integration: Leverages scipy.integrate.solve_ivp utilizing an adaptive Runge-Kutta (RK45) scheme alongside root-finding event detection to precisely isolate critical flight milestones like apogee and ground impact.
-
-Automated Validation (tests/test_atmosphere.py): Features a dedicated pytest suite verifying environmental calculations against standard physical benchmarks.
-
-Diagnostics & Telemetry (dashboard.py): Computes key flight performance metrics (maximum velocity, peak Mach number, burnout time, apogee altitude, and downrange dispersion) while rendering a multi-panel diagnostic dashboard.
-
-RequirementsPython: 3.10 or higher
-NumPy: Vectorized mathematical operations and matrix manipulations
-SciPy: ODE initial value problem solvers (solve_ivp)
-Matplotlib: Trajectory plotting and performance visualization
-Pytest: Automated unit testing framework
-
-Installation & Usage
-Clone the repository:Bashgit clone [https://github.com/litter1809-tech/rocket-simulator-6dof.git](https://github.com/litter1809-tech/rocket-simulator-6dof.git)
+```bash
+git clone https://github.com/litter1809-tech/rocket-simulator-6dof.git
 cd rocket-simulator-6dof
-Install dependencies:Bashpip install -r requirements.txt
-Run the test suite:Bashpytest
-Execute the full simulation:Bashpython main.py
+pip install -r requirements.txt
+```
+
+To run the unit tests:
+```bash
+python -m pytest
+```
+
+To run the full simulation pipeline:
+```bash
+python main.py
+```
+
+## Sample Output
+
+When you run `main.py`, it prints the flight milestones to the terminal and saves the plots:
+
+```
+6-DoF flight integration: RK45 solution
+status=1; events=1; final time=13.23 s
+final position (x, y, z) = (-190.66, 3.87, -0.00) m
+
+Performance metrics:
+  Apogee altitude     : 191.8 m (629.3 ft)
+  Max velocity        : 87.1 m/s (0.25 Mach)
+  Burnout time        : 5.00 s
+  Flight duration     : 13.23 s
+  Downrange impact    : 190.7 m
