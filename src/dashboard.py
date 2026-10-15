@@ -21,6 +21,9 @@ def generate_dashboard(
     sol: OptimizeResult,
     rocket: Rocket,
     output_path: str = "rocket_performance_dashboard.png",
+    *,
+    surface_wind: tuple[float, float] = (3.0, 1.0),
+    wind_enabled: bool = True,
 ) -> str:
     """Save trajectory and flight-load plots for an integrated rocket solution."""
     time_s = np.asarray(sol.t, dtype=float)
@@ -31,7 +34,8 @@ def generate_dashboard(
     velocity_y_m_s = np.asarray(sol.y[4], dtype=float)
     velocity_z_m_s = np.asarray(sol.y[5], dtype=float)
     speed_m_s = np.sqrt(velocity_x_m_s**2 + velocity_y_m_s**2 + velocity_z_m_s**2)
-
+    air_relative_speed_m_s = np.zeros_like(time_s)
+    
     altitude_m = np.maximum(position_z_m, 0.0)
     q_inf = np.zeros_like(speed_m_s)
     mach_number = np.zeros_like(speed_m_s)
@@ -44,12 +48,40 @@ def generate_dashboard(
         mass_history_kg[sample_index] = rocket.mass
         sample_altitude_m = float(np.clip(altitude_m[sample_index], 0.0, H_MAX))
         rho = density(sample_altitude_m)
-        q_inf[sample_index] = 0.5 * rho * speed_m_s[sample_index] ** 2
-        sound_speed_m_s = speed_of_sound(sample_altitude_m)
-        mach_number[sample_index] = (
-            speed_m_s[sample_index] / sound_speed_m_s if sound_speed_m_s > 0.0 else 0.0
+        wind = (
+            np.asarray(
+                wind_velocity(
+                    sample_altitude_m,
+                    surface_wind=surface_wind,
+                ),
+                dtype=float,
+            )
+            if wind_enabled
+            else np.zeros(3, dtype=float)
         )
 
+        velocity_inertial_m_s = np.array(
+            [
+                velocity_x_m_s[sample_index],
+                velocity_y_m_s[sample_index],
+                velocity_z_m_s[sample_index],
+            ],
+            dtype=float,
+        )
+
+        v_rel = velocity_inertial_m_s - wind
+        air_relative_speed_m_s[sample_index] = np.linalg.norm(v_rel)
+
+        q_inf[sample_index] = (
+            0.5 * rho * air_relative_speed_m_s[sample_index] ** 2
+        )
+
+        sound_speed_m_s = speed_of_sound(sample_altitude_m)
+        mach_number[sample_index] = (
+            air_relative_speed_m_s[sample_index] / sound_speed_m_s
+            if sound_speed_m_s > 0.0
+            else 0.0
+        )
     fig = plt.figure(figsize=(12, 10))
     fig.suptitle("Rocket Performance Dashboard", fontsize=16, fontweight="bold")
 
