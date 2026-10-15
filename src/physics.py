@@ -319,29 +319,29 @@ def rocket_state_derivative(
 
 
 def ground_impact(t: float, y: ArrayLike) -> float:
-    """Altitude event used to stop integration at ground contact."""
+    
     alt = float(np.asarray(y, dtype=float)[2])
 
     return 1.0 if t <= 0.0 else alt
-
 
 ground_impact.terminal = True
 ground_impact.direction = -1
 
 
 def apogee_arrival(t: float, y: ArrayLike) -> float:
-    """Vertical-velocity zero crossing after leaving the ground."""
+    
     state = np.asarray(y, dtype=float)
 
-    if state[2] <= 0.0:
+    altitude = float(state[2])
+    vertical_velocity = float(state[5])
+
+    if t <= 1e-6 or altitude <= 0.0:
         return 1.0
-
-    return float(state[5])
-
+    
+    return vertical_velocity
 
 apogee_arrival.terminal = False
 apogee_arrival.direction = -1
-
 
 def simulate_rocket(
     rocket: Rocket,
