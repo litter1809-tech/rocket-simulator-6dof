@@ -52,11 +52,6 @@ def _find_column(
 
 
 def parse_flight_csv(csv_content: bytes | str) -> FlightTelemetry:
-    """Parse a CSV with Time [s] and Altitude [m] columns.
-
-    Optional Velocity [m/s], X/Downrange [m], and Y/Crossrange [m] columns
-    are accepted. Time and altitude are rebased to the first valid sample.
-    """
     try:
         text = (
             csv_content.decode("utf-8-sig")
@@ -161,11 +156,20 @@ def parse_flight_csv(csv_content: bytes | str) -> FlightTelemetry:
     altitude_array = np.asarray(altitudes, dtype=float)
     time_array -= time_array[0]
     altitude_array -= altitude_array[0]
+    
+    velocity_array = np.asarray(
+        [
+        np.nan if value is None else value
+        for value in velocities
+        ],
+        dtype=float,
+    )
 
-    if all(value is not None for value in velocities):
-        velocity_array = np.asarray(velocities, dtype=float)
-    else:
-        velocity_array = np.gradient(altitude_array, time_array)
+    missing_velocity = np.isnan(velocity_array)
+
+    if np.any(missing_velocity):
+        estimated_velocity = np.gradient(altitude_array, time_array)
+        velocity_array[missing_velocity] = estimated_velocity[missing_velocity]
 
     has_spatial_coordinates = (
         all(value is not None for value in downranges)
