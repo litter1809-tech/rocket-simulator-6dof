@@ -1,3 +1,4 @@
+
 """
 6-DOF Rocket Simulator Streamlit engineering dashboard.
 Author: Tegan Broody
@@ -155,7 +156,9 @@ def _stability_analysis(specs: dict[str, float]) -> dict[str, float]:
             specs["dry_mass_kg"] * dry_cg_m
             + propellant_remaining_kg * propellant_cg_m
         ) / total_mass_kg
-        margin_calibers = (center_of_pressure_m - center_of_gravity_m) / diameter_m
+        margin_calibers = (
+            center_of_pressure_m - center_of_gravity_m
+        ) / diameter_m
         return center_of_gravity_m, margin_calibers
 
     launch_cg_m, launch_margin = static_margin(specs["propellant_mass_kg"])
@@ -176,7 +179,8 @@ def _stability_history(
     specs = result["specs"]
     time_s = result["time_s"]
     propellant_remaining_kg = np.maximum(
-        np.asarray(result["mass_kg"], dtype=float) - specs["dry_mass_kg"],
+        np.asarray(result["mass_kg"], dtype=float)
+        - specs["dry_mass_kg"],
         0.0,
     )
     dry_cg_m = 0.45 * result["stability"]["length_m"]
@@ -210,11 +214,16 @@ def _run_simulation(
         initial_state,
         (0.0, 180.0),
         surface_wind=surface_wind,
+        wind_enabled=False,
     )
     if not solution.success:
-        raise RuntimeError(f"Trajectory integration failed: {solution.message}")
+        raise RuntimeError(
+            f"Trajectory integration failed: {solution.message}"
+        )
     if solution.t.size < 2 or not np.all(np.isfinite(solution.y)):
-        raise RuntimeError("The integrator did not produce a finite flight trajectory.")
+        raise RuntimeError(
+            "The integrator did not produce a finite flight trajectory."
+        )
     if not solution.t_events or solution.t_events[0].size == 0:
         raise RuntimeError(
             "The rocket did not return to the ground within 180 seconds. "
@@ -231,14 +240,19 @@ def _run_simulation(
         ],
         dtype=float,
     )
-    position_m = launch_frame_rotation @ np.asarray(solution.y[0:3], dtype=float)
+    position_m = launch_frame_rotation @ np.asarray(
+        solution.y[0:3], dtype=float
+    )
     position_m[2] = np.maximum(position_m[2], 0.0)
     velocity_inertial_m_s = np.asarray(solution.y[3:6], dtype=float)
     velocity_m_s = launch_frame_rotation @ velocity_inertial_m_s
     altitude_m = position_m[2]
     speed_m_s = np.linalg.norm(velocity_m_s, axis=0)
     attitude_rad = np.asarray(
-        [quaternion_to_pitch_yaw_roll(q) for q in solution.y[6:10].T],
+        [
+            quaternion_to_pitch_yaw_roll(q)
+            for q in solution.y[6:10].T
+        ],
         dtype=float,
     )
     attitude_deg = np.rad2deg(attitude_rad)
@@ -274,24 +288,43 @@ def _run_simulation(
             rocket,
             surface_wind=surface_wind,
         )
-        acceleration_g[index] = np.linalg.norm(state_derivative[3:6]) / G0
+        acceleration_g[index] = (
+            np.linalg.norm(state_derivative[3:6]) / G0
+        )
+
+    apogee_detected = (
+        len(solution.t_events) > 1
+        and len(solution.t_events[1]) > 0
+        and len(solution.y_events) > 1
+        and len(solution.y_events[1]) > 0
+    )
 
     apogee_time_s = (
         float(solution.t_events[1][0])
-        if len(solution.t_events) > 1 and solution.t_events[1].size
+        if apogee_detected
         else None
     )
+    print("APOGEE EVENT TIME:", apogee_time_s)
+    print("SIMULATION TIME SAMPLES:", time_s[-5:])
+    print("ALTITUDE SAMPLES:", altitude_m[-5:])
     apogee_altitude_m = (
         float(solution.y_events[1][0][2])
-        if len(solution.y_events) > 1 and solution.y_events[1].size
-        else float(np.max(altitude_m))
+        if apogee_detected
+        else float("nan")
     )
+
     burnout_time_s = (
         float(solution.t_events[2][0])
-        if len(solution.t_events) > 2 and solution.t_events[2].size
+        if len(solution.t_events) > 2 and len(solution.t_events[2]) > 0
         else None
     )
-    flight_time_s = float(solution.t_events[0][0])
+
+    flight_time_s = (
+        float(solution.t_events[0][0])
+        if len(solution.t_events) > 0 and len(solution.t_events[0]) > 0
+        else float(time_s[-1])
+    )
+
     transonic_band = (mach >= 0.8) & (mach <= 1.2)
     stability = _stability_analysis(specs)
 
@@ -324,7 +357,9 @@ def _run_simulation(
             "max_speed_m_s": float(np.max(speed_m_s)),
             "max_mach": float(np.max(mach)),
             "transonic_band_reached": bool(np.any(transonic_band)),
-            "max_dynamic_pressure_pa": float(np.max(dynamic_pressure_pa)),
+            "max_dynamic_pressure_pa": float(
+                np.max(dynamic_pressure_pa)
+            ),
             "peak_acceleration_g": float(np.max(acceleration_g)),
             "flight_time_s": flight_time_s,
         },
@@ -348,7 +383,10 @@ def _pose_traces_at_time(
     time_s = result["time_s"]
     position_m = result["position_m"]
     selected_position = np.asarray(
-        [np.interp(selected_time_s, time_s, position_m[axis]) for axis in range(3)],
+        [
+            np.interp(selected_time_s, time_s, position_m[axis])
+            for axis in range(3)
+        ],
         dtype=float,
     )
     selected_axes = np.asarray(
@@ -368,7 +406,11 @@ def _pose_traces_at_time(
     selected_axes = _orthonormal_body_axes(selected_axes)
     selected_attitude = np.asarray(
         [
-            np.interp(selected_time_s, time_s, result["attitude_deg"][:, angle])
+            np.interp(
+                selected_time_s,
+                time_s,
+                result["attitude_deg"][:, angle],
+            )
             for angle in range(3)
         ],
         dtype=float,
@@ -378,8 +420,15 @@ def _pose_traces_at_time(
     ring_angles = np.linspace(0.0, 2.0 * np.pi, 9)[:-1]
     body_vertices = np.asarray(
         [
-            (body_radius_m * np.cos(angle), body_radius_m * np.sin(angle), z)
-            for z in (-0.5 * body_length_m, 0.22 * body_length_m)
+            (
+                body_radius_m * np.cos(angle),
+                body_radius_m * np.sin(angle),
+                z,
+            )
+            for z in (
+                -0.5 * body_length_m,
+                0.22 * body_length_m,
+            )
             for angle in ring_angles
         ]
         + [(0.0, 0.0, 0.5 * body_length_m)],
@@ -392,10 +441,22 @@ def _pose_traces_at_time(
     face_k: list[int] = []
     for ring_index in range(ring_size):
         next_index = (ring_index + 1) % ring_size
-        face_i.extend((ring_index, ring_index, ring_size + ring_index))
-        face_j.extend((next_index, ring_size + next_index, ring_size + next_index))
+        face_i.extend(
+            (ring_index, ring_index, ring_size + ring_index)
+        )
+        face_j.extend(
+            (
+                next_index,
+                ring_size + next_index,
+                ring_size + next_index,
+            )
+        )
         face_k.extend(
-            (ring_size + next_index, ring_size + ring_index, nose_tip_index)
+            (
+                ring_size + next_index,
+                ring_size + ring_index,
+                nose_tip_index,
+            )
         )
     for fin_index in range(4):
         angle = fin_index * np.pi / 2.0
@@ -421,7 +482,9 @@ def _pose_traces_at_time(
             ]
         )
         first = len(body_vertices)
-        body_vertices = np.vstack((body_vertices, fin_root, fin_tip, fin_trailing))
+        body_vertices = np.vstack(
+            (body_vertices, fin_root, fin_tip, fin_trailing)
+        )
         face_i.append(first)
         face_j.append(first + 1)
         face_k.append(first + 2)
@@ -463,15 +526,18 @@ def _pose_traces_at_time(
         go.Scatter3d(
             x=[
                 selected_position[0],
-                selected_position[0] + selected_axes[0, axis_index] * body_length_m,
+                selected_position[0]
+                + selected_axes[0, axis_index] * body_length_m,
             ],
             y=[
                 selected_position[1],
-                selected_position[1] + selected_axes[1, axis_index] * body_length_m,
+                selected_position[1]
+                + selected_axes[1, axis_index] * body_length_m,
             ],
             z=[
                 selected_position[2],
-                selected_position[2] + selected_axes[2, axis_index] * body_length_m,
+                selected_position[2]
+                + selected_axes[2, axis_index] * body_length_m,
             ],
             mode="lines+markers",
             name=axis_label,
@@ -491,37 +557,79 @@ def _pose_traces_at_time(
     return (body_trace, *axis_traces)
 
 
+
 def _trajectory_chart(
     result: dict[str, Any],
     telemetry: FlightTelemetry | None = None,
 ) -> go.Figure:
+    plot_time = np.asarray(result["time_s"], dtype=float).copy()
+    plot_altitude = np.asarray(result["altitude_m"], dtype=float).copy()
+    plot_speed = np.asarray(result["speed_m_s"], dtype=float).copy()
+
+    # Insert the exact apogee event into the plotted samples.
+    events = result.get("events", {})
+    apogee_time = events.get("apogee_s")
+    apogee_altitude = events.get("apogee_altitude_m")
+
+    if (
+        apogee_time is not None
+        and apogee_altitude is not None
+        and np.isfinite(apogee_time)
+        and np.isfinite(apogee_altitude)
+        and plot_time[0] <= apogee_time <= plot_time[-1]
+    ):
+        nearest_index = int(np.argmin(np.abs(plot_time - apogee_time)))
+
+        if not np.isclose(
+            plot_time[nearest_index],
+            apogee_time,
+            rtol=0.0,
+            atol=1e-9,
+        ):
+            insert_index = int(np.searchsorted(plot_time, apogee_time))
+
+            plot_time = np.insert(plot_time, insert_index, apogee_time)
+            plot_altitude = np.insert(
+                plot_altitude, insert_index, apogee_altitude
+            )
+            plot_speed = np.insert(
+                plot_speed,
+                insert_index,
+                np.interp(apogee_time, result["time_s"], result["speed_m_s"]),
+            )
+        else:
+            plot_altitude[nearest_index] = apogee_altitude
+
     figure = make_subplots(specs=[[{"secondary_y": True}]])
+
     figure.add_trace(
         go.Scatter(
-            x=result["time_s"],
-            y=result["altitude_m"],
+            x=plot_time,
+            y=plot_altitude,
             name="Altitude",
             mode="lines+markers",
             line={"color": COLOR_BLUE, "width": 2},
             marker={"size": 3},
-            customdata=result["time_s"],
+            customdata=plot_time,
             fill="tozeroy",
             fillcolor="rgba(111, 159, 200, 0.10)",
         ),
         secondary_y=False,
     )
+
     figure.add_trace(
         go.Scatter(
-            x=result["time_s"],
-            y=result["speed_m_s"],
+            x=plot_time,
+            y=plot_speed,
             name="Velocity",
             mode="lines+markers",
             line={"color": COLOR_AMBER, "width": 2},
             marker={"size": 3},
-            customdata=result["time_s"],
+            customdata=plot_time,
         ),
         secondary_y=True,
     )
+
     if telemetry is not None:
         figure.add_trace(
             go.Scatter(
@@ -538,6 +646,7 @@ def _trajectory_chart(
             ),
             secondary_y=False,
         )
+
         figure.add_trace(
             go.Scatter(
                 x=telemetry.time_s,
@@ -552,6 +661,7 @@ def _trajectory_chart(
             ),
             secondary_y=True,
         )
+
     figure.update_layout(
         template="plotly_dark",
         title="Altitude and velocity over flight time",
@@ -571,10 +681,17 @@ def _trajectory_chart(
         },
         margin={"t": 50, "b": 80, "l": 20, "r": 20},
     )
-    figure.update_yaxes(title_text="Altitude (m)", secondary_y=False, rangemode="tozero")
-    figure.update_yaxes(title_text="Velocity (m/s)", secondary_y=True)
-    return figure
 
+    figure.update_yaxes(
+        title_text="Altitude (m)",
+        secondary_y=False,
+        rangemode="tozero",
+    )
+    figure.update_yaxes(
+        title_text="Velocity (m/s)",
+        secondary_y=True,
+    )
+    return figure
 
 def _loads_chart(result: dict[str, Any]) -> go.Figure:
     figure = make_subplots(
@@ -629,8 +746,18 @@ def _loads_chart(result: dict[str, Any]) -> go.Figure:
         },
         margin={"t": 50, "b": 80, "l": 20, "r": 20},
     )
-    figure.update_yaxes(title_text="Acceleration (G)", rangemode="tozero", row=1, col=1)
-    figure.update_yaxes(title_text="Dynamic pressure (Pa)", rangemode="tozero", row=2, col=1)
+    figure.update_yaxes(
+        title_text="Acceleration (G)",
+        rangemode="tozero",
+        row=1,
+        col=1,
+    )
+    figure.update_yaxes(
+        title_text="Dynamic pressure (Pa)",
+        rangemode="tozero",
+        row=2,
+        col=1,
+    )
     return figure
 
 
@@ -649,7 +776,10 @@ def _stability_chart(result: dict[str, Any]) -> go.Figure:
     figure.add_trace(
         go.Scatter(
             x=result["time_s"],
-            y=np.full_like(result["time_s"], result["stability"]["center_of_pressure_m"]),
+            y=np.full_like(
+                result["time_s"],
+                result["stability"]["center_of_pressure_m"],
+            ),
             name="Estimated center of pressure",
             line={"color": COLOR_SLATE, "width": 2, "dash": "dash"},
         ),
@@ -693,8 +823,14 @@ def _stability_chart(result: dict[str, Any]) -> go.Figure:
         margin={"t": 50, "b": 90, "l": 25, "r": 25},
         height=430,
     )
-    figure.update_yaxes(title_text="Distance from nose (m)", secondary_y=False)
-    figure.update_yaxes(title_text="Static margin (calibers)", secondary_y=True)
+    figure.update_yaxes(
+        title_text="Distance from nose (m)",
+        secondary_y=False,
+    )
+    figure.update_yaxes(
+        title_text="Static margin (calibers)",
+        secondary_y=True,
+    )
     return figure
 
 
@@ -708,7 +844,19 @@ def _position_3d_chart(
     equal_proportional_scale: bool = False,
 ) -> go.Figure:
     position_m = result["position_m"]
-    apogee_index = int(np.argmax(position_m[2]))
+
+    apogee_time_s = result["events"]["apogee_s"]
+    if apogee_time_s is not None:
+        apogee_index = int(
+            np.argmin(
+                np.abs(
+                    np.asarray(result["time_s"], dtype=float)
+                    - apogee_time_s
+                )
+            )
+        )
+    else:
+        apogee_index = int(np.argmax(position_m[2]))
     x_values = [np.asarray(position_m[0], dtype=float)]
     y_values = [np.asarray(position_m[1], dtype=float)]
     z_values = [np.asarray(position_m[2], dtype=float)]
@@ -730,6 +878,7 @@ def _position_3d_chart(
             )
         )
         z_values.append(np.asarray(telemetry.altitude_m, dtype=float))
+
     vehicle_length_m = max(
         10.0 * float(result["specs"]["diameter_m"]),
         0.1,
@@ -740,10 +889,17 @@ def _position_3d_chart(
         float(np.ptp(position_m[2])),
         1.0,
     )
-    body_length_m = max(vehicle_length_m * 8.0, trajectory_scale_m * 0.04)
+    body_length_m = max(
+        vehicle_length_m * 8.0,
+        trajectory_scale_m * 0.04,
+    )
     if animated and selected_time_s is None:
         selected_time_s = 0.0
-    model_padding_m = body_length_m * 1.1 if selected_time_s is not None else 1.0
+    model_padding_m = (
+        body_length_m * 1.1
+        if selected_time_s is not None
+        else 1.0
+    )
     data_ranges = (
         np.concatenate(x_values),
         np.concatenate(y_values),
@@ -758,17 +914,22 @@ def _position_3d_chart(
     ]
     if selected_time_s is not None:
         target_axis_span_m = max(
-            max(axis_range[1] - axis_range[0] for axis_range in padded_ranges)
-            / 3.0,
+            max(
+                axis_range[1] - axis_range[0]
+                for axis_range in padded_ranges
+            ) / 3.0,
             2.0 * model_padding_m,
         )
         for axis_range in padded_ranges:
             current_span_m = axis_range[1] - axis_range[0]
             if current_span_m < target_axis_span_m:
-                extra_padding_m = (target_axis_span_m - current_span_m) / 2.0
+                extra_padding_m = (
+                    target_axis_span_m - current_span_m
+                ) / 2.0
                 axis_range[0] -= extra_padding_m
                 axis_range[1] += extra_padding_m
     x_range, y_range, z_range = padded_ranges
+
     scene_aspect: dict[str, Any]
     if equal_proportional_scale:
         padded_spans = np.asarray(
@@ -779,7 +940,10 @@ def _position_3d_chart(
             ],
             dtype=float,
         )
-        capped_spans = np.maximum(padded_spans, np.max(padded_spans) / 3.0)
+        capped_spans = np.maximum(
+            padded_spans,
+            np.max(padded_spans) / 3.0,
+        )
         aspect_ratio = capped_spans / np.max(capped_spans)
         scene_aspect = {
             "aspectmode": "manual",
@@ -790,9 +954,8 @@ def _position_3d_chart(
             },
         }
     else:
-        scene_aspect = {
-            "aspectmode": "data",
-        }
+        scene_aspect = {"aspectmode": "data"}
+
     figure = go.Figure()
     if animated:
         figure.add_trace(
@@ -854,6 +1017,7 @@ def _position_3d_chart(
                 ),
             )
         )
+
     if animated or selected_time_s is not None:
         figure.add_traces(
             list(
@@ -864,6 +1028,7 @@ def _position_3d_chart(
                 )
             )
         )
+
     if telemetry is not None and not animated:
         has_empirical_xy = (
             telemetry.downrange_m is not None
@@ -900,8 +1065,13 @@ def _position_3d_chart(
                 ),
             )
         )
+
     if not animated:
-        marker_indices = [0, apogee_index, len(result["time_s"]) - 1]
+        marker_indices = [
+            0,
+            apogee_index,
+            len(result["time_s"]) - 1,
+        ]
         marker_labels = ["Launch", "Apogee", "Impact"]
         figure.add_trace(
             go.Scatter3d(
@@ -912,7 +1082,10 @@ def _position_3d_chart(
                 name="Flight milestones",
                 text=marker_labels,
                 textposition="top center",
-                marker={"size": 4, "color": [COLOR_GREEN, COLOR_AMBER, COLOR_SLATE]},
+                marker={
+                    "size": 4,
+                    "color": [COLOR_GREEN, COLOR_AMBER, COLOR_SLATE],
+                },
                 customdata=np.column_stack(
                     (
                         result["time_s"][marker_indices],
@@ -929,6 +1102,7 @@ def _position_3d_chart(
                 ),
             )
         )
+
     figure.update_layout(
         template="plotly_dark",
         title=(
@@ -973,24 +1147,44 @@ def _position_3d_chart(
             "itemdoubleclick": "toggle",
             "font": {"size": 10},
         },
-        margin={"l": 40, "r": 35 if animated else 120, "t": 75, "b": 45},
+        margin={
+            "l": 40,
+            "r": 35 if animated else 120,
+            "t": 75,
+            "b": 45,
+        },
         height=760 if animated else 560,
     )
+
     if animated:
         time_s = np.asarray(result["time_s"], dtype=float)
         flight_time_s = float(np.ptp(time_s))
         frame_count = min(
             1200,
-            max(2, int(np.ceil(flight_time_s * 30.0 / max(playback_speed, 0.5)))),
+            max(
+                2,
+                int(
+                    np.ceil(
+                        flight_time_s * 30.0 / max(playback_speed, 0.5)
+                    )
+                ),
+            ),
         )
         apogee_time_s = float(time_s[apogee_index])
         frame_times_s = np.unique(
             np.append(
-                np.linspace(float(time_s[0]), float(time_s[-1]), frame_count),
+                np.linspace(
+                    float(time_s[0]),
+                    float(time_s[-1]),
+                    frame_count,
+                ),
                 apogee_time_s,
             )
         )
-        frame_names = [f"{frame_time_s:.6f}" for frame_time_s in frame_times_s]
+        frame_names = [
+            f"{frame_time_s:.6f}"
+            for frame_time_s in frame_times_s
+        ]
         figure.frames = tuple(
             go.Frame(
                 name=frame_name,
@@ -1003,11 +1197,17 @@ def _position_3d_chart(
                 ),
                 traces=[1, 2, 3, 4],
             )
-            for frame_time_s, frame_name in zip(frame_times_s, frame_names)
+            for frame_time_s, frame_name in zip(
+                frame_times_s,
+                frame_names,
+            )
         )
         active_frame = int(
             np.argmin(
-                np.abs(frame_times_s - float(selected_time_s or time_s[0]))
+                np.abs(
+                    frame_times_s
+                    - float(selected_time_s or time_s[0])
+                )
             )
         )
         frame_interval_ms = (
@@ -1051,7 +1251,10 @@ def _position_3d_chart(
                             "args": [
                                 [None],
                                 {
-                                    "frame": {"duration": 0, "redraw": False},
+                                    "frame": {
+                                        "duration": 0,
+                                        "redraw": False,
+                                    },
                                     "transition": {"duration": 0},
                                     "mode": "immediate",
                                 },
@@ -1187,7 +1390,11 @@ def _set_playback_from_plot(
     flight_time_s: float,
 ) -> None:
     selection = getattr(plot_state, "selection", None)
-    points = getattr(selection, "points", []) if selection is not None else []
+    points = (
+        getattr(selection, "points", [])
+        if selection is not None
+        else []
+    )
     if not points:
         return
     point = points[0]
@@ -1207,9 +1414,14 @@ def _set_playback_from_plot(
         point.get("point_index"),
         float(selected_time),
     )
-    if st.session_state.get("ground_station_last_plot_selection") == selection_signature:
+    if (
+        st.session_state.get("ground_station_last_plot_selection")
+        == selection_signature
+    ):
         return
-    st.session_state["ground_station_last_plot_selection"] = selection_signature
+    st.session_state["ground_station_last_plot_selection"] = (
+        selection_signature
+    )
     st.session_state[playback_key] = float(
         np.clip(float(selected_time), 0.0, flight_time_s)
     )
@@ -1233,9 +1445,18 @@ def _render_ground_station_inspector(
     )
     frame = _telemetry_at_time(result, selected_time_s)
     telemetry_columns = st.columns(4)
-    telemetry_columns[0].metric("Altitude", f"{frame['altitude_m']:,.1f} m")
-    telemetry_columns[1].metric("Velocity", f"{frame['velocity_m_s']:,.1f} m/s")
-    telemetry_columns[2].metric("Acceleration", f"{frame['acceleration_g']:,.2f} G")
+    telemetry_columns[0].metric(
+        "Altitude",
+        f"{frame['altitude_m']:,.1f} m",
+    )
+    telemetry_columns[1].metric(
+        "Velocity",
+        f"{frame['velocity_m_s']:,.1f} m/s",
+    )
+    telemetry_columns[2].metric(
+        "Acceleration",
+        f"{frame['acceleration_g']:,.2f} G",
+    )
     telemetry_columns[3].metric("Mach", f"{frame['mach']:.3f}")
     st.caption(
         f"Frame at {selected_time_s:.3f} s · "
@@ -1348,7 +1569,10 @@ def _dispersion_chart(
     landing_y = dispersion["landing_y_m"]
     center_x = float(np.mean(landing_x))
     center_y = float(np.mean(landing_y))
-    radial_distance = np.hypot(landing_x - center_x, landing_y - center_y)
+    radial_distance = np.hypot(
+        landing_x - center_x,
+        landing_y - center_y,
+    )
     radius_95 = float(np.quantile(radial_distance, 0.95))
     angles = np.linspace(0.0, 2.0 * np.pi, 180)
 
@@ -1368,8 +1592,11 @@ def _dispersion_chart(
                 "line": {"color": "#D6DEE6", "width": 0.5},
             },
             customdata=np.column_stack(
-                (dispersion["apogee_m"], dispersion["wind_speed_m_s"],
-                 dispersion["thrust_scale"])
+                (
+                    dispersion["apogee_m"],
+                    dispersion["wind_speed_m_s"],
+                    dispersion["thrust_scale"],
+                )
             ),
             hovertemplate=(
                 "Downrange: %{x:.1f} m<br>Crossrange: %{y:.1f} m<br>"
@@ -1442,22 +1669,44 @@ st.sidebar.title("Vehicle configuration")
 st.sidebar.caption("Set values with either the number field or its slider.")
 st.sidebar.subheader("Mass & propulsion")
 dry_mass_kg = _parameter_control(
-    "Dry Mass (kg)", key="dry_mass", minimum=0.1, maximum=500.0,
-    default=12.0, step=0.1, format_string="%.1f",
+    "Dry Mass (kg)",
+    key="dry_mass",
+    minimum=0.1,
+    maximum=500.0,
+    default=12.0,
+    step=0.1,
+    format_string="%.1f",
 )
 propellant_mass_kg = _parameter_control(
-    "Propellant Mass (kg)", key="propellant_mass", minimum=0.0, maximum=500.0,
-    default=3.0, step=0.1, format_string="%.1f",
+    "Propellant Mass (kg)",
+    key="propellant_mass",
+    minimum=0.0,
+    maximum=500.0,
+    default=3.0,
+    step=0.1,
+    format_string="%.1f",
 )
 burn_time_s = _parameter_control(
-    "Motor Burn Time (s)", key="burn_time", minimum=0.1, maximum=120.0,
-    default=5.0, step=0.1, format_string="%.1f",
+    "Motor Burn Time (s)",
+    key="burn_time",
+    minimum=0.1,
+    maximum=120.0,
+    default=5.0,
+    step=0.1,
+    format_string="%.1f",
 )
 peak_thrust_N = _parameter_control(
-    "Peak Thrust (N)", key="peak_thrust", minimum=0.0, maximum=50_000.0,
-    default=1_200.0, step=10.0, format_string="%.1f",
+    "Peak Thrust (N)",
+    key="peak_thrust",
+    minimum=0.0,
+    maximum=50_000.0,
+    default=1_200.0,
+    step=10.0,
+    format_string="%.1f",
 )
-st.sidebar.caption("Optionally replace the constant-thrust model with a RASP/RockSim motor curve.")
+st.sidebar.caption(
+    "Optionally replace the constant-thrust model with a RASP/RockSim motor curve."
+)
 uploaded_eng = st.sidebar.file_uploader(
     "Custom motor curve (.eng)",
     type=["eng"],
@@ -1469,7 +1718,9 @@ uploaded_eng = st.sidebar.file_uploader(
 thrust_curve: ThrustCurve | None = None
 if uploaded_eng is not None:
     try:
-        thrust_curve = parse_eng_motor(uploaded_eng.getvalue().decode("utf-8-sig"))
+        thrust_curve = parse_eng_motor(
+            uploaded_eng.getvalue().decode("utf-8-sig")
+        )
         st.sidebar.success(
             f"{thrust_curve.designation}: {thrust_curve.burn_time_s:.2f} s, "
             f"{thrust_curve.total_impulse_ns:.1f} N·s"
@@ -1481,27 +1732,53 @@ if uploaded_eng is not None:
         )
     except (UnicodeDecodeError, ValueError) as error:
         st.sidebar.error(f"Could not read .eng motor file: {error}")
+
 st.sidebar.subheader("Aerodynamics")
 diameter_m = _parameter_control(
-    "Rocket Diameter (m)", key="diameter", minimum=0.01, maximum=2.0,
-    default=0.1, step=0.01, format_string="%.2f",
+    "Rocket Diameter (m)",
+    key="diameter",
+    minimum=0.01,
+    maximum=2.0,
+    default=0.1,
+    step=0.01,
+    format_string="%.2f",
 )
 drag_coefficient = _parameter_control(
-    "Drag Coefficient (Cd)", key="drag_coefficient", minimum=0.0, maximum=2.0,
-    default=0.5, step=0.01, format_string="%.2f",
+    "Drag Coefficient (Cd)",
+    key="drag_coefficient",
+    minimum=0.0,
+    maximum=2.0,
+    default=0.5,
+    step=0.01,
+    format_string="%.2f",
 )
 st.sidebar.subheader("Launch rail")
 launch_elevation_deg = _parameter_control(
-    "Launch Elevation (°)", key="launch_elevation", minimum=5.0, maximum=90.0,
-    default=90.0, step=1.0, format_string="%.0f",
+    "Launch Elevation (°)",
+    key="launch_elevation",
+    minimum=5.0,
+    maximum=90.0,
+    default=90.0,
+    step=1.0,
+    format_string="%.0f",
 )
 launch_azimuth_deg = _parameter_control(
-    "Launch Azimuth (°)", key="launch_azimuth", minimum=0.0, maximum=359.0,
-    default=0.0, step=1.0, format_string="%.0f",
+    "Launch Azimuth (°)",
+    key="launch_azimuth",
+    minimum=0.0,
+    maximum=359.0,
+    default=0.0,
+    step=1.0,
+    format_string="%.0f",
 )
 wind_speed_m_s = _parameter_control(
-    "Crosswind Speed (m/s)", key="crosswind_speed", minimum=0.0, maximum=50.0,
-    default=0.0, step=0.5, format_string="%.1f",
+    "Crosswind Speed (m/s)",
+    key="crosswind_speed",
+    minimum=0.0,
+    maximum=50.0,
+    default=0.0,
+    step=0.5,
+    format_string="%.1f",
 )
 st.sidebar.caption(
     "Crosswind is applied perpendicular to the selected launch azimuth; the "
@@ -1547,8 +1824,13 @@ telemetry: FlightTelemetry | None = None
 if uploaded_csv is not None:
     try:
         telemetry = parse_flight_csv(uploaded_csv.getvalue())
-        st.sidebar.success(f"Loaded {len(telemetry.time_s)} valid telemetry samples.")
-        if telemetry.downrange_m is None or telemetry.crossrange_m is None:
+        st.sidebar.success(
+            f"Loaded {len(telemetry.time_s)} valid telemetry samples."
+        )
+        if (
+            telemetry.downrange_m is None
+            or telemetry.crossrange_m is None
+        ):
             st.sidebar.caption(
                 "No complete X/Y columns found; the 3D overlay will show altitude only."
             )
@@ -1571,7 +1853,11 @@ if thrust_curve is not None and thrust_curve.propellant_mass_kg is not None:
     specifications["burn_time_s"] = thrust_curve.burn_time_s
     specifications["peak_thrust_N"] = float(np.max(thrust_curve.thrust_n))
 
-if st.sidebar.button("Run Simulation", type="primary", width="stretch"):
+if st.sidebar.button(
+    "Run Simulation",
+    type="primary",
+    width="stretch",
+):
     st.session_state.pop("simulation_result", None)
     st.session_state.pop("monte_carlo_result", None)
     try:
@@ -1579,7 +1865,12 @@ if st.sidebar.button("Run Simulation", type="primary", width="stretch"):
             specifications,
             thrust_curve,
         )
-    except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as error:
+    except (
+        ValueError,
+        RuntimeError,
+        FloatingPointError,
+        np.linalg.LinAlgError,
+    ) as error:
         st.error(f"Simulation could not be completed: {error}")
 
 current_motor_signature = _motor_signature(thrust_curve)
@@ -1595,17 +1886,26 @@ if run_monte_carlo:
             )
         st.session_state["monte_carlo_result"] = dispersion_result
         st.session_state["monte_carlo_specs"] = specifications.copy()
-        st.session_state["monte_carlo_motor_signature"] = current_motor_signature
-    except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as error:
+        st.session_state["monte_carlo_motor_signature"] = (
+            current_motor_signature
+        )
+    except (
+        ValueError,
+        RuntimeError,
+        FloatingPointError,
+        np.linalg.LinAlgError,
+    ) as error:
         st.error(f"Monte Carlo analysis could not be completed: {error}")
 
 result = st.session_state.get("simulation_result")
 dispersion_result = st.session_state.get("monte_carlo_result")
 if (
     st.session_state.get("monte_carlo_specs") != specifications
-    or st.session_state.get("monte_carlo_motor_signature") != current_motor_signature
+    or st.session_state.get("monte_carlo_motor_signature")
+    != current_motor_signature
 ):
     dispersion_result = None
+
 st.subheader("Flight summary")
 metric_columns = st.columns(6)
 if result is None:
@@ -1621,7 +1921,9 @@ if result is None:
         ),
     ):
         column.metric(label, "—")
-    st.info("Configure the rocket in the sidebar and run a simulation to view results.")
+    st.info(
+        "Configure the rocket in the sidebar and run a simulation to view results."
+    )
 else:
     metrics = result["metrics"]
     metric_columns[0].metric(
@@ -1639,7 +1941,11 @@ else:
     metric_columns[2].metric(
         "Maximum Mach",
         f"{metrics['max_mach']:.2f}",
-        delta="Transonic band reached" if metrics["transonic_band_reached"] else "Below Mach 0.8",
+        delta=(
+            "Transonic band reached"
+            if metrics["transonic_band_reached"]
+            else "Below Mach 0.8"
+        ),
         delta_color="off",
     )
     metric_columns[3].metric(
@@ -1647,9 +1953,13 @@ else:
         f"{metrics['max_dynamic_pressure_pa']:,.0f} Pa",
     )
     metric_columns[4].metric(
-        "Peak Acceleration", f"{metrics['peak_acceleration_g']:,.2f} G"
+        "Peak Acceleration",
+        f"{metrics['peak_acceleration_g']:,.2f} G",
     )
-    metric_columns[5].metric("Total Flight Time", f"{metrics['flight_time_s']:,.2f} s")
+    metric_columns[5].metric(
+        "Total Flight Time",
+        f"{metrics['flight_time_s']:,.2f} s",
+    )
     st.caption("Transonic band is defined here as Mach 0.8–1.2.")
 
     st.subheader("Flight events")
@@ -1670,7 +1980,10 @@ else:
             else "Not detected"
         ),
     )
-    event_columns[2].metric("Impact / flight time", f"{metrics['flight_time_s']:.3f} s")
+    event_columns[2].metric(
+        "Impact / flight time",
+        f"{metrics['flight_time_s']:.3f} s",
+    )
 
     st.subheader("Longitudinal stability estimate")
     stability = result["stability"]
@@ -1719,7 +2032,9 @@ else:
         {
             "Milestone": "Liftoff / rail clearance",
             "Time (s)": 0.0,
-            "Details": "Simulation starts in free flight; rail constraint is not modeled.",
+            "Details": (
+                "Simulation starts in free flight; rail constraint is not modeled."
+            ),
         },
         {
             "Milestone": "Motor burnout",
@@ -1772,6 +2087,7 @@ else:
         "Empirical Validation (Sim vs. Real)",
     ]
 )
+
 with trajectory_tab:
     if result is not None:
         trajectory_plot_key = "trajectory_inspection_plot"
@@ -1789,7 +2105,10 @@ with trajectory_tab:
             flight_time_s=float(result["events"]["flight_time_s"]),
         )
     else:
-        st.info("The altitude and velocity profile will appear here after a simulation.")
+        st.info(
+            "The altitude and velocity profile will appear here after a simulation."
+        )
+
 with spatial_tab:
     if result is not None:
         st.caption(
@@ -1810,7 +2129,9 @@ with spatial_tab:
             playback_key="ground_station_playback_time_s",
             flight_time_s=float(result["events"]["flight_time_s"]),
         )
-        position_chart, velocity_chart, attitude_chart = _spatial_timeseries_charts(result)
+        position_chart, velocity_chart, attitude_chart = (
+            _spatial_timeseries_charts(result)
+        )
         for chart_key, chart in (
             ("position_timeseries_inspection", position_chart),
             ("velocity_timeseries_inspection", velocity_chart),
@@ -1830,10 +2151,16 @@ with spatial_tab:
                 flight_time_s=float(result["events"]["flight_time_s"]),
             )
     else:
-        st.info("The 3D flight path and spatial component profiles will appear here after a simulation.")
+        st.info(
+            "The 3D flight path and spatial component profiles will appear here "
+            "after a simulation."
+        )
+
 with ground_station_tab:
     if result is None:
-        st.info("Run a simulation to scrub through the flight and inspect live telemetry.")
+        st.info(
+            "Run a simulation to scrub through the flight and inspect live telemetry."
+        )
     else:
         flight_time_s = float(result["events"]["flight_time_s"])
         playback_key = "ground_station_playback_time_s"
@@ -1865,7 +2192,9 @@ with ground_station_tab:
             _position_3d_chart(
                 result,
                 telemetry,
-                selected_time_s=float(st.session_state.get(playback_key, 0.0)),
+                selected_time_s=float(
+                    st.session_state.get(playback_key, 0.0)
+                ),
                 animated=True,
                 playback_speed=float(playback_speed),
                 equal_proportional_scale=equal_proportional_scale,
@@ -1876,11 +2205,15 @@ with ground_station_tab:
             flight_time_s,
             playback_key,
         )
+
 with loads_tab:
     if result is not None:
         st.plotly_chart(_loads_chart(result), width="stretch")
     else:
-        st.info("Acceleration and dynamic pressure profiles will appear here after a simulation.")
+        st.info(
+            "Acceleration and dynamic pressure profiles will appear here after a simulation."
+        )
+
 with stability_tab:
     if result is not None:
         st.caption(
@@ -1889,12 +2222,19 @@ with stability_tab:
         )
         st.plotly_chart(_stability_chart(result), width="stretch")
     else:
-        st.info("Run a simulation to view the estimated CG and static-margin history.")
+        st.info(
+            "Run a simulation to view the estimated CG and static-margin history."
+        )
+
 with dispersion_tab:
     if not monte_carlo_enabled:
-        st.info("Enable Monte Carlo analysis in the sidebar to calculate a landing footprint.")
+        st.info(
+            "Enable Monte Carlo analysis in the sidebar to calculate a landing footprint."
+        )
     elif dispersion_result is None:
-        st.info("Start Monte Carlo Analysis from the sidebar to calculate the landing footprint.")
+        st.info(
+            "Start Monte Carlo Analysis from the sidebar to calculate the landing footprint."
+        )
     else:
         st.caption(
             f"{len(dispersion_result['landing_x_m'])} trajectories; sampled wind "
@@ -1930,6 +2270,7 @@ with dispersion_tab:
             _dispersion_chart(dispersion_result, result),
             width="stretch",
         )
+
 with configuration_tab:
     if result is not None:
         configuration = {
@@ -1943,12 +2284,18 @@ with configuration_tab:
                     else "constant at configured thrust until burnout"
                 ),
                 "motor_designation": (
-                    thrust_curve.designation if thrust_curve is not None else None
+                    thrust_curve.designation
+                    if thrust_curve is not None
+                    else None
                 ),
                 "motor_total_impulse_Ns": (
-                    thrust_curve.total_impulse_ns if thrust_curve is not None else None
+                    thrust_curve.total_impulse_ns
+                    if thrust_curve is not None
+                    else None
                 ),
-                "wind_model": "altitude-dependent wind with configurable crosswind",
+                "wind_model": (
+                    "altitude-dependent wind with configurable crosswind"
+                ),
                 "crosswind_speed_m_s": result["specs"]["wind_speed_m_s"],
                 "display_frame": "inertial axes rotated to launch azimuth",
                 "launch_elevation_deg": result["specs"]["launch_elevation_deg"],
@@ -1958,24 +2305,31 @@ with configuration_tab:
         }
         st.code(json.dumps(configuration, indent=2), language="json")
     else:
-        st.info("The configuration summary will appear here after a simulation.")
+        st.info(
+            "The configuration summary will appear here after a simulation."
+        )
+
 with validation_tab:
     if telemetry is None:
         st.info(
             "Upload a CSV in the sidebar to compare real flight telemetry with the simulation."
         )
     elif result is None:
-        st.info("Run a simulation to calculate real-versus-simulated flight errors.")
+        st.info(
+            "Run a simulation to calculate real-versus-simulated flight errors."
+        )
     else:
         try:
             comparison = _validation_metrics(result, telemetry)
             st.subheader("Apogee comparison")
             validation_columns = st.columns(4)
             validation_columns[0].metric(
-                "Simulated apogee", f"{comparison.simulated_apogee_m:,.1f} m"
+                "Simulated apogee",
+                f"{comparison.simulated_apogee_m:,.1f} m",
             )
             validation_columns[1].metric(
-                "Real apogee", f"{comparison.real_apogee_m:,.1f} m"
+                "Real apogee",
+                f"{comparison.real_apogee_m:,.1f} m",
             )
             validation_columns[2].metric(
                 "Real − simulated",
@@ -1988,7 +2342,8 @@ with validation_tab:
                 delta_color="off",
             )
             validation_columns[3].metric(
-                "Altitude RMSE", f"{comparison.altitude_rmse_m:,.1f} m"
+                "Altitude RMSE",
+                f"{comparison.altitude_rmse_m:,.1f} m",
             )
             st.caption(
                 f"Altitude MAE: {comparison.altitude_mae_m:,.1f} m · "
@@ -1996,7 +2351,10 @@ with validation_tab:
                 "Apogee percent delta is relative to simulated apogee; altitude errors "
                 "are evaluated at real-flight sample times over the shared interval."
             )
-            st.plotly_chart(_trajectory_chart(result, telemetry), width="stretch")
+            st.plotly_chart(
+                _trajectory_chart(result, telemetry),
+                width="stretch",
+            )
         except ValueError as error:
             st.warning(f"Could not compare these flights: {error}")
 
