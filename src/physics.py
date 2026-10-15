@@ -160,7 +160,6 @@ def _quat_derivative(
 
     return 0.5 * _quat_multiply(q_quat, omega_quat)
 
-
 def _aero_forces_and_moments(
     rocket: Rocket,
     position_inertial_m: NDArray[np.float64],
@@ -208,23 +207,21 @@ def _aero_forces_and_moments(
     moment = np.zeros(3, dtype=float)
 
     cd = rocket.drag_coefficient
+    
+    axial_velocity = float(v_body[2])
 
-    # Apply the simplified normal-force model only when moving forward
-    # along the rocket's body +Z axis.
-    if v_body[2] > 1e-9:
+    if abs(axial_velocity) > 1e-9:
         transverse_velocity = v_body[:2]
         transverse_speed = float(np.linalg.norm(transverse_velocity))
 
         angle_of_attack = float(
-            np.arctan2(transverse_speed, v_body[2])
+            np.arctan2(transverse_speed, abs(axial_velocity))
         )
 
         cd += 2.0 * angle_of_attack**2
 
         if transverse_speed >= 1e-12:
             normal_coefficient = 2.0 * np.pi * angle_of_attack
-
-            # Estimate the force opposing the transverse component.
             lift_body[:2] = (
                 -qbar
                 * area
@@ -233,20 +230,20 @@ def _aero_forces_and_moments(
                 / transverse_speed
             )
 
-            # Project the estimated lift perpendicular to the
-            # air-relative velocity. This avoids division by forward
-            # velocity when the rocket is moving mostly sideways.
             lift_body -= np.dot(lift_body, v_hat) * v_hat
-
-            # Simplified normal-force moment arm.
             moment_arm = 0.15
-            moment[0] = moment_arm * lift_body[1]
-            moment[1] = -moment_arm * lift_body[0]
+            flight_direction = (
+                1.0 if axial_velocity > 0.0 else -1.0
+            )
 
-    # Drag acts opposite to the air-relative velocity.
+            moment[0] = (
+                flight_direction * moment_arm * lift_body[1]
+            )
+            moment[1] = (
+                -flight_direction * moment_arm * lift_body[0]
+            )
+
     drag_body = -qbar * area * cd * v_hat
-
-    # Convert forces from body coordinates to inertial coordinates.
     drag = C_bi @ drag_body
     lift = C_bi @ lift_body
 
