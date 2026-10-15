@@ -33,12 +33,20 @@ def test_1976_standard_atmosphere_reference_layers(
     assert density(altitude_m) == pytest.approx(expected_density, rel=2e-3)
 
 def test_disabled_wind_is_zero_at_all_altitudes() -> None:
-    altitudes = np.array([0.0, 1000.0, 11000.0, 30000.0])
+    altitudes = np.array([
+        0.0,
+        1000.0,
+        11000.0,
+        20000.0,
+        30000.0,
+        50000.0,
+        86000.0,
+    ])
 
     wind = wind_velocity(altitudes, enabled=False)
 
-    assert wind.shape == (4, 3)
-    np.testing.assert_array_equal(wind, np.zeros((4, 3)))
+    assert wind.shape == (7, 3)
+    np.testing.assert_array_equal(wind, np.zeros((7, 3)))
 
 def test_disabled_wind_is_zero_at_scalar_altitude() -> None:
     wind = wind_velocity(1000.0, enabled=False)
