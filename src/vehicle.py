@@ -46,7 +46,7 @@ class Rocket:
             raise ValueError("thrust_scale must be a finite non-negative number")
         if self.thrust_curve is not None:
             self.burn_time = self.thrust_curve.burn_time_s
-        self.update(0.0)
+            self.update(0.0)
 
         t = float(t)
         if not np.isfinite(t) or t < 0.0:
