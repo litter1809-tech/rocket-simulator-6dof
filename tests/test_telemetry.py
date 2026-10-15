@@ -48,7 +48,7 @@ def test_blank_optional_measurement_does_not_drop_altimeter_sample() -> None:
     np.testing.assert_allclose(telemetry.altitude_m, [0.0, 10.0, 0.0])
     np.testing.assert_allclose(
         telemetry.velocity_m_s,
-        [10.0, 0.0, -10.0],
+        [0.0, 0.0, -10.0],
     )
 @pytest.mark.parametrize(
     ("csv_content", "message"),

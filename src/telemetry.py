@@ -165,10 +165,12 @@ def parse_flight_csv(csv_content: bytes | str) -> FlightTelemetry:
         dtype=float,
     )
 
+    
     missing_velocity = np.isnan(velocity_array)
 
     if np.any(missing_velocity):
-        velocity_array = np.gradient(altitude_array, time_array)
+        estimated_velocity = np.gradient(altitude_array, time_array)
+        velocity_array[missing_velocity] = estimated_velocity[missing_velocity]
 
     has_spatial_coordinates = (
         all(value is not None for value in downranges)
