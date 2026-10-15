@@ -21,10 +21,12 @@ G0: float = 9.80665
 
 def _normalize_quaternion(q_quat: ArrayLike) -> NDArray[np.float64]:
     q_quat = np.asarray(q_quat, dtype=float)
+    if q_quat.shape != (4,) or not np.all(np.isfinite(q_quat)):
+        raise ValueError("quaternion must contain four finite values")
     norm = np.linalg.norm(q_quat)
 
-    if norm == 0.0:
-        raise ValueError("quaternion norm cannot be zero")
+    if norm <= np.finfo(float).tiny:
+        raise ValueError("quaternion norm must be nonzero")
 
     return q_quat / norm
 
@@ -252,6 +254,8 @@ def rocket_state_derivative(
         raise ValueError(
             f"state vector must have shape (13,), got {state.shape}"
         )
+    if not np.all(np.isfinite(state)):
+        raise ValueError("state vector must contain only finite values")
 
     pos = state[0:3]
     vel = state[3:6]
@@ -356,6 +360,23 @@ def simulate_rocket(
         raise ValueError(
             f"initial_state must have shape (13,), got {y0.shape}"
         )
+    if not np.all(np.isfinite(y0)):
+        raise ValueError("initial_state must contain only finite values")
+    _normalize_quaternion(y0[6:10])
+
+    try:
+        start_time, end_time = (float(value) for value in t_span)
+    except (TypeError, ValueError) as error:
+        raise ValueError("t_span must contain two finite times") from error
+    if (
+        not np.isfinite(start_time)
+        or not np.isfinite(end_time)
+        or start_time < 0.0
+        or end_time <= start_time
+    ):
+        raise ValueError(
+            "t_span must contain finite times with 0 <= start < end"
+        )
 
     def dynamics(
         t: float,
@@ -411,7 +432,7 @@ def simulate_rocket(
 
     solution = solve_ivp(
         fun=dynamics,
-        t_span=t_span,
+        t_span=(start_time, end_time),
         y0=y0,
         method="RK45",
         rtol=1e-6,
@@ -428,8 +449,4 @@ def simulate_rocket(
         raise RuntimeError(
             f"Simulation integration failed: {solution.message}"
         )
-    print("Simulation end time:", solution.t[-1])
-    print("Event times:", solution.t_events)
-    print("Final state:", solution.y[:, -1])
-
     return solution

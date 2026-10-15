@@ -1,8 +1,10 @@
 import numpy as np
+import pytest
 
 from src.environment import wind_velocity
 from src.physics import (
     _aero_forces_and_moments,
+    _normalize_quaternion,
     _quat_to_rotation_matrix,
     initial_state_from_launch_angles,
     quaternion_to_pitch_yaw_roll,
@@ -37,6 +39,28 @@ def test_drag_coefficient_changes_longitudinal_acceleration() -> None:
     high_drag_acceleration = rocket_state_derivative(1.0, state, high_drag)[3]
 
     assert high_drag_acceleration < low_drag_acceleration
+
+
+def test_quaternion_and_solver_inputs_must_be_finite() -> None:
+    with pytest.raises(ValueError, match="four finite"):
+        _normalize_quaternion([1.0, 0.0, 0.0, np.nan])
+
+    rocket = Rocket(
+        dry_mass=1.0,
+        propellant_mass=0.0,
+        burn_time=1.0,
+        average_thrust=0.0,
+        reference_area=0.01,
+        drag_coefficient=0.0,
+        moment_of_inertia=1.0,
+    )
+    invalid_state = initial_state_from_launch_angles()
+    invalid_state[3] = np.inf
+    with pytest.raises(ValueError, match="only finite"):
+        simulate_rocket(rocket, invalid_state)
+
+    with pytest.raises(ValueError, match="start < end"):
+        simulate_rocket(rocket, t_span=(1.0, 1.0))
 
 
 def test_launch_state_points_along_requested_rail_angles() -> None:
