@@ -1990,11 +1990,17 @@ with spatial_tab:
     if result is not None:
         st.caption(
             "Position and velocity use a launch-aligned inertial frame; attitude "
-            "uses ZYX Euler angles with yaw relative to the launch azimuth."
+            "uses ZYX Euler angles with yaw relative to the launch azimuth. "
+            "For readability, narrow axes are expanded visually; displayed "
+            "coordinates and hover values remain in metres."
         )
         spatial_plot_key = "spatial_inspection_plot"
         spatial_selection = st.plotly_chart(
-            _position_3d_chart(result, telemetry),
+            _position_3d_chart(
+                result,
+                telemetry,
+                equal_proportional_scale=True,
+            ),
             width="stretch",
             key=spatial_plot_key,
             on_select="rerun",
