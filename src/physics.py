@@ -160,6 +160,7 @@ def _quat_derivative(
 
     return 0.5 * _quat_multiply(q_quat, omega_quat)
 
+
 def _aero_forces_and_moments(
     rocket: Rocket,
     position_inertial_m: NDArray[np.float64],
@@ -189,12 +190,10 @@ def _aero_forces_and_moments(
     speed = float(np.linalg.norm(v_rel))
 
     if speed < 1e-12:
-        zero_force = np.zeros(3, dtype=float)
-        return zero_force, zero_force.copy(), zero_force.copy()
+        zero = np.zeros(3, dtype=float)
+        return zero.copy(), zero.copy(), zero.copy()
 
-    # Rotation matrix from body coordinates to inertial coordinates.
     C_bi = _quat_to_rotation_matrix(q_quat)
-
     v_body = C_bi.T @ v_rel
     v_hat = v_body / speed
 
@@ -203,11 +202,9 @@ def _aero_forces_and_moments(
 
     lift_body = np.zeros(3, dtype=float)
     moment = np.zeros(3, dtype=float)
-
     cd = rocket.drag_coefficient
-    
-    axial_velocity = float(v_body[2])
 
+    axial_velocity = float(v_body[2])
 
     if axial_velocity > 1e-9:
         transverse_velocity = v_body[:2]
@@ -216,7 +213,6 @@ def _aero_forces_and_moments(
         angle_of_attack = float(
             np.arctan2(transverse_speed, axial_velocity)
         )
-
         cd += 2.0 * angle_of_attack**2
 
         if transverse_speed >= 1e-12:
@@ -235,35 +231,11 @@ def _aero_forces_and_moments(
             moment[0] = moment_arm * lift_body[1]
             moment[1] = -moment_arm * lift_body[0]
 
-        if transverse_speed >= 1e-12:
-            normal_coefficient = 2.0 * np.pi * angle_of_attack
-            lift_body[:2] = (
-                -qbar
-                * area
-                * normal_coefficient
-                * transverse_velocity
-                / transverse_speed
-            )
-
-            lift_body -= np.dot(lift_body, v_hat) * v_hat
-            moment_arm = 0.15
-            flight_direction = (
-                1.0 if axial_velocity > 0.0 else -1.0
-            )
-
-            moment[0] = (
-                flight_direction * moment_arm * lift_body[1]
-            )
-            moment[1] = (
-                -flight_direction * moment_arm * lift_body[0]
-            )
-
     drag_body = -qbar * area * cd * v_hat
     drag = C_bi @ drag_body
     lift = C_bi @ lift_body
 
     return drag, lift, moment
-
 
 def rocket_state_derivative(
     t: float,
