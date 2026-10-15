@@ -185,7 +185,6 @@ def _aero_forces_and_moments(
         else np.zeros(3, dtype=float)
     )
 
-    # Velocity relative to the surrounding air.
     v_rel = velocity_inertial_m_s - wind
     speed = float(np.linalg.norm(v_rel))
 
@@ -196,7 +195,6 @@ def _aero_forces_and_moments(
     # Rotation matrix from body coordinates to inertial coordinates.
     C_bi = _quat_to_rotation_matrix(q_quat)
 
-    # Convert air-relative velocity to body coordinates.
     v_body = C_bi.T @ v_rel
     v_hat = v_body / speed
 
@@ -210,15 +208,32 @@ def _aero_forces_and_moments(
     
     axial_velocity = float(v_body[2])
 
+
     if axial_velocity > 1e-9:
         transverse_velocity = v_body[:2]
         transverse_speed = float(np.linalg.norm(transverse_velocity))
 
         angle_of_attack = float(
-            np.arctan2(transverse_speed, abs(axial_velocity))
+            np.arctan2(transverse_speed, axial_velocity)
         )
 
         cd += 2.0 * angle_of_attack**2
+
+        if transverse_speed >= 1e-12:
+            normal_coefficient = 2.0 * np.pi * angle_of_attack
+            lift_body[:2] = (
+                -qbar
+                * area
+                * normal_coefficient
+                * transverse_velocity
+                / transverse_speed
+            )
+
+            lift_body -= np.dot(lift_body, v_hat) * v_hat
+
+            moment_arm = 0.15
+            moment[0] = moment_arm * lift_body[1]
+            moment[1] = -moment_arm * lift_body[0]
 
         if transverse_speed >= 1e-12:
             normal_coefficient = 2.0 * np.pi * angle_of_attack
