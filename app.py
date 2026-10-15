@@ -1096,7 +1096,7 @@ def _position_3d_chart(
         animation_options = {
             "frame": {
                 "duration": max(1, round(frame_interval_ms)),
-                "redraw": False,
+                "redraw": True,
             },
             "transition": {"duration": 0},
             "mode": "immediate",
