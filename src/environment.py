@@ -158,7 +158,6 @@ def standard_atmosphere(h: ArrayLike) -> AtmosphereState:
         speed_of_sound(altitude_m),
     )
 
-
 def wind_velocity(
     h: ArrayLike,
     *,
@@ -168,11 +167,27 @@ def wind_velocity(
     jet_width: float = 3_500.0,
     vertical_amplitude: float = 0.3,
     vertical_wavelength: float = 8_000.0,
+    enabled: bool = True,
 ) -> NDArray[np.float64]:
-    """East-north-up wind vector [m/s]."""
+    
     alt = _as_altitude(h)
-    jet = np.exp(-0.5 * ((alt - jet_altitude) / jet_width) ** 2)
+
+    if not enabled:
+        return np.zeros((*alt.shape, 3), dtype=float)
+
+    if jet_width <= 0.0:
+        raise ValueError("jet_width must be positive")
+    if vertical_wavelength <= 0.0:
+        raise ValueError("vertical_wavelength must be positive")
+
+    jet = np.exp(
+        -0.5 * ((alt - jet_altitude) / jet_width) ** 2
+    )
+
     east = surface_wind[0] + jet_wind[0] * jet
     north = surface_wind[1] + jet_wind[1] * jet
-    up = vertical_amplitude * np.sin(2.0 * np.pi * alt / vertical_wavelength)
+    up = vertical_amplitude * np.sin(
+        2.0 * np.pi * alt / vertical_wavelength
+    )
+
     return np.stack([east, north, up], axis=-1)
