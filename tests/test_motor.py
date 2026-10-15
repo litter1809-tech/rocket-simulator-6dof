@@ -1,9 +1,10 @@
 import pytest
+import numpy as np
 
 from src.motor import parse_eng_motor
 from src.physics import initial_state_from_launch_angles, simulate_rocket
 from src.vehicle import Rocket
-
+from src.motor import ThrustCurve
 
 SAMPLE_ENG = """; RASP motor file
 MOTOR-A 18 70 0 4.0 8.0 Example manufacturer
@@ -12,7 +13,6 @@ MOTOR-A 18 70 0 4.0 8.0 Example manufacturer
 2.0 10.0
 3.0 0.0
 """
-
 
 def test_parse_eng_motor_and_integrate_curve() -> None:
     motor = parse_eng_motor(SAMPLE_ENG)
@@ -78,6 +78,66 @@ def test_custom_motor_curve_sets_integrated_burnout_event() -> None:
     assert solution.t_events[1].size == 0
     assert rocket.mass == pytest.approx(rocket.dry_mass)
     assert rocket.thrust == pytest.approx(0.0)
+
+def test_thrust_is_zero_at_and_after_burnout():
+    motor = ThrustCurve(
+        times_s=np.array([0.0, 1.0, 2.0]),
+        thrust_n=np.array([0.0, 100.0, 0.0]),
+        propellant_mass_kg=0.1,
+    )
+
+    assert motor.thrust_at(2.0) == 0.0
+    assert motor.thrust_at(3.0) == 0.0
+
+
+def test_positive_final_thrust_is_rejected():
+    with pytest.raises(ValueError, match="final burnout time"):
+        ThrustCurve(
+            times_s=np.array([0.0, 1.0, 2.0]),
+            thrust_n=np.array([0.0, 100.0, 10.0]),
+            propellant_mass_kg=0.1,
+        )
+
+
+def test_rocket_rejects_mismatched_propellant_mass():
+    motor = ThrustCurve(
+        times_s=np.array([0.0, 1.0, 2.0]),
+        thrust_n=np.array([0.0, 100.0, 0.0]),
+        propellant_mass_kg=0.1,
+    )
+
+    with pytest.raises(ValueError, match="does not match"):
+        Rocket(
+            dry_mass=1.0,
+            propellant_mass=0.2,
+            burn_time=2.0,
+            average_thrust=50.0,
+            reference_area=0.01,
+            drag_coefficient=0.5,
+            moment_of_inertia=0.1,
+            thrust_curve=motor,
+        )
+
+
+def test_rocket_accepts_matching_propellant_mass():
+    motor = ThrustCurve(
+        times_s=np.array([0.0, 1.0, 2.0]),
+        thrust_n=np.array([0.0, 100.0, 0.0]),
+        propellant_mass_kg=0.1,
+    )
+
+    rocket = Rocket(
+        dry_mass=1.0,
+        propellant_mass=0.1,
+        burn_time=2.0,
+        average_thrust=50.0,
+        reference_area=0.01,
+        drag_coefficient=0.5,
+        moment_of_inertia=0.1,
+        thrust_curve=motor,
+    )
+
+    assert rocket.update(2.0) == pytest.approx((1.0, 0.0))
 
 
 @pytest.mark.parametrize(
