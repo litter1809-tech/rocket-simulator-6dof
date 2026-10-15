@@ -74,7 +74,7 @@ def _flight_metrics(solution: OptimizeResult, rocket: Rocket) -> dict[str, float
         "max_mach": float(np.max(mach)),
         "burnout_time_s": float(rocket.burn_time),
         "flight_duration_s": float(time[-1]),
-        "impact_downrange_m": float(np.hypot(x[-1], y[-1])),
+        "impact_horizontal_distance_m": float(np.hypot(x[-1], y[-1])),
         "max_dynamic_pressure_pa": float(np.max(qbar)),
     }
 
@@ -161,14 +161,13 @@ def run() -> None:
     metrics = _flight_metrics(solution, launch_rocket)
     print("\nPerformance metrics:")
     print(f"  Apogee altitude     : {metrics['apogee_m']:.1f} m ({metrics['apogee_ft']:.1f} ft)")
-    print(f"  Max velocity        : {metrics['max_velocity_m_s']:.1f} m/s ({metrics['max_velocity_m_s'] / 343.0:.2f} Mach)")
+    print(f"  Max velocity        : {metrics['max_velocity_m_s']:.1f} m/s ({metrics['max_mach']:.2f} Mach)")
     print(f"  Burnout time        : {metrics['burnout_time_s']:.2f} s")
     print(f"  Flight duration     : {metrics['flight_duration_s']:.2f} s")
-    print(f"  Downrange impact    : {metrics['impact_downrange_m']:.1f} m")
+    print(f"  Horizontal impact distance: {metrics['impact_horizontal_distance_m']:.1f} m")
 
     dashboard_path = generate_dashboard(solution, launch_rocket)
     print(f"\nSaved performance dashboard to {dashboard_path}")
-
 
 if __name__ == "__main__":
     run()
