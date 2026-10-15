@@ -210,7 +210,7 @@ def _aero_forces_and_moments(
     
     axial_velocity = float(v_body[2])
 
-    if abs(axial_velocity) > 1e-9:
+    if axial_velocity > 1e-9:
         transverse_velocity = v_body[:2]
         transverse_speed = float(np.linalg.norm(transverse_velocity))
 
