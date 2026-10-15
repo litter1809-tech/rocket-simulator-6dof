@@ -38,16 +38,21 @@ class Rocket:
             value = getattr(self, name)
             if not (np.isfinite(value) and value > 0.0):
                 raise ValueError(f"{name} must be a positive number (got {value!r})")
+
         for name in ("propellant_mass", "average_thrust", "drag_coefficient"):
             value = getattr(self, name)
             if not (np.isfinite(value) and value >= 0.0):
                 raise ValueError(f"{name} must be a non-negative number (got {value!r})")
+
         if not (np.isfinite(self.thrust_scale) and self.thrust_scale >= 0.0):
             raise ValueError("thrust_scale must be a finite non-negative number")
+
         if self.thrust_curve is not None:
             self.burn_time = self.thrust_curve.burn_time_s
-            self.update(0.0)
 
+        self.update(0.0)
+
+    def update(self, t: float) -> tuple[float, float]:
         t = float(t)
         if not np.isfinite(t) or t < 0.0:
             raise ValueError(
@@ -55,16 +60,20 @@ class Rocket:
             )
 
         if self.thrust_curve is None:
-            propellant_remaining_fraction = max(1.0 - t / self.burn_time, 0.0)
+            propellant_remaining_fraction = max(
+                1.0 - t / self.burn_time, 0.0
+            )
             thrust = self.average_thrust if t < self.burn_time else 0.0
         else:
             propellant_remaining_fraction = (
                 self.thrust_curve.propellant_fraction_remaining(t)
             )
             thrust = self.thrust_curve.thrust_at(t)
+
         self.time = t
         self.mass = (
-            self.dry_mass + self.propellant_mass * propellant_remaining_fraction
+            self.dry_mass
+            + self.propellant_mass * propellant_remaining_fraction
         )
         self.thrust = float(thrust * self.thrust_scale)
         return self.mass, self.thrust
