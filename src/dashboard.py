@@ -1,3 +1,10 @@
+"""
+Matplotlib performance dashboard generation for rocket trajectories.
+Author: Tegan Broody
+School: Ridley High School
+Date: October 2026
+"""
+
 from __future__ import annotations
 
 import matplotlib

@@ -1,3 +1,10 @@
+"""
+1976 US Standard Atmosphere and wind environment models.
+Author: Tegan Broody
+School: Ridley High School
+Date: October 2026
+"""
+
 from __future__ import annotations
 
 from typing import NamedTuple

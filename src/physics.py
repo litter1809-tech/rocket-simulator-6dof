@@ -1,3 +1,10 @@
+"""
+Six-degree-of-freedom rocket dynamics and trajectory integration.
+Author: Tegan Broody
+School: Ridley High School
+Date: October 2026
+"""
+
 from __future__ import annotations
 
 import numpy as np
@@ -40,6 +47,51 @@ def _quat_to_rotation_matrix(q_quat: ArrayLike) -> NDArray[np.float64]:
     ], dtype=float)
 
 
+def initial_state_from_launch_angles(
+    elevation_deg: float = 90.0,
+    azimuth_deg: float = 0.0,
+) -> NDArray[np.float64]:
+    """Create a stationary launch state with body +Z along the rail.
+
+    Elevation is measured above the horizontal; azimuth is measured from +X
+    toward +Y. The returned quaternion is scalar-first and maps body to inertial.
+    """
+    if not np.isfinite(elevation_deg) or not 0.0 <= elevation_deg <= 90.0:
+        raise ValueError("launch elevation must be finite and between 0 and 90 degrees")
+    if not np.isfinite(azimuth_deg):
+        raise ValueError("launch azimuth must be finite")
+
+    elevation = np.deg2rad(elevation_deg)
+    azimuth = np.deg2rad(azimuth_deg)
+    body_inclination = np.pi / 2.0 - elevation
+    half_yaw = azimuth / 2.0
+    half_pitch = body_inclination / 2.0
+    quaternion = np.array(
+        [
+            np.cos(half_yaw) * np.cos(half_pitch),
+            -np.sin(half_yaw) * np.sin(half_pitch),
+            np.cos(half_yaw) * np.sin(half_pitch),
+            np.sin(half_yaw) * np.cos(half_pitch),
+        ],
+        dtype=float,
+    )
+    return np.array(
+        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, *quaternion, 0.0, 0.0, 0.0],
+        dtype=float,
+    )
+
+
+def quaternion_to_pitch_yaw_roll(
+    q_quat: ArrayLike,
+) -> tuple[float, float, float]:
+    """Return ZYX Euler pitch, yaw, and roll angles in radians."""
+    rotation = _quat_to_rotation_matrix(q_quat)
+    pitch = np.arcsin(np.clip(-rotation[2, 0], -1.0, 1.0))
+    yaw = np.arctan2(rotation[1, 0], rotation[0, 0])
+    roll = np.arctan2(rotation[2, 1], rotation[2, 2])
+    return float(pitch), float(yaw), float(roll)
+
+
 def _quat_derivative(q_quat: ArrayLike, omega_body: ArrayLike) -> NDArray[np.float64]:
     q_quat = _normalize_quaternion(q_quat)
     omega_body = np.asarray(omega_body, dtype=float)
@@ -52,10 +104,16 @@ def _aero_forces_and_moments(
     position_inertial_m: NDArray[np.float64],
     velocity_inertial_m_s: NDArray[np.float64],
     q_quat: NDArray[np.float64],
+    surface_wind: tuple[float, float] = (3.0, 1.0),
+    wind_enabled: bool = True,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     alt = max(float(position_inertial_m[2]), 0.0)
     rho = density(alt)
-    wind = np.asarray(wind_velocity(alt), dtype=float)
+    wind = (
+        np.asarray(wind_velocity(alt, surface_wind=surface_wind), dtype=float)
+        if wind_enabled
+        else np.zeros(3, dtype=float)
+    )
     v_rel = velocity_inertial_m_s - wind
     speed = np.linalg.norm(v_rel)
     if speed < 1e-12:
@@ -64,30 +122,48 @@ def _aero_forces_and_moments(
 
     C_bi = _quat_to_rotation_matrix(q_quat)
     v_body = C_bi.T @ v_rel
-    alpha = float(np.arctan2(v_body[2], v_body[0]))
     qbar = 0.5 * rho * speed**2
     area = rocket.reference_area
-    cd = 0.5 + 2.0 * alpha**2
-    cl = 2.0 * np.pi * alpha
-
     v_hat = v_body / speed
+    lift_body = np.zeros(3, dtype=float)
+    moment = np.zeros(3, dtype=float)
+    cd = rocket.drag_coefficient
+    if v_body[2] > 1e-9:
+        transverse_velocity = v_body[:2]
+        transverse_speed = float(np.linalg.norm(transverse_velocity))
+        angle_of_attack = float(np.arctan2(transverse_speed, v_body[2]))
+        cd += 2.0 * angle_of_attack**2
+        if transverse_speed >= 1e-12:
+            normal_coefficient = 2.0 * np.pi * angle_of_attack
+            lift_body[:2] = (
+                -qbar
+                * area
+                * normal_coefficient
+                * transverse_velocity
+                / transverse_speed
+            )
+            lift_body[2] = -float(np.dot(lift_body[:2], transverse_velocity)) / v_body[2]
+
+            # The simplified normal force acts aft of the center of gravity.
+            moment_arm = 0.15
+            moment[0] = moment_arm * lift_body[1]
+            moment[1] = -moment_arm * lift_body[0]
+
     drag_body = -qbar * area * cd * v_hat
-    lift_dir = np.array([0.0, 0.0, 1.0], dtype=float)
-    lift_body = -qbar * area * cl * lift_dir
     drag = C_bi @ drag_body
     lift = C_bi @ lift_body
 
-    # Fixed arm and simple coefficients; replace with vehicle aero data when available.
-    moment_arm = 0.15
-    moment = np.array([
-        0.0,
-        -qbar * area * moment_arm * cl,
-        0.0,
-    ], dtype=float)
     return drag, lift, moment
 
 
-def rocket_state_derivative(t: float, y: ArrayLike, rocket: Rocket) -> NDArray[np.float64]:
+def rocket_state_derivative(
+    t: float,
+    y: ArrayLike,
+    rocket: Rocket,
+    *,
+    surface_wind: tuple[float, float] = (3.0, 1.0),
+    wind_enabled: bool = True,
+) -> NDArray[np.float64]:
     """Return the derivative of the 13-state 6-DoF vehicle model."""
     state = np.asarray(y, dtype=float)
     if state.shape != (13,):
@@ -107,7 +183,14 @@ def rocket_state_derivative(t: float, y: ArrayLike, rocket: Rocket) -> NDArray[n
     thrust_body = np.array([0.0, 0.0, rocket.thrust], dtype=float)
     thrust = C_bi @ thrust_body
 
-    drag, lift, moment = _aero_forces_and_moments(rocket, pos, vel, quat)
+    drag, lift, moment = _aero_forces_and_moments(
+        rocket,
+        pos,
+        vel,
+        quat,
+        surface_wind=surface_wind,
+        wind_enabled=wind_enabled,
+    )
     force = gravity + thrust + drag + lift
 
     accel = force / m
@@ -135,10 +218,23 @@ ground_impact.terminal = True
 ground_impact.direction = -1
 
 
+def apogee_arrival(t: float, y: ArrayLike) -> float:
+    """Vertical-velocity zero crossing after the vehicle leaves the ground."""
+    state = np.asarray(y, dtype=float)
+    return 1.0 if state[2] <= 0.0 else float(state[5])
+
+
+apogee_arrival.terminal = False
+apogee_arrival.direction = -1
+
+
 def simulate_rocket(
     rocket: Rocket,
     initial_state: ArrayLike | None = None,
     t_span: tuple[float, float] = (0.0, 30.0),
+    *,
+    surface_wind: tuple[float, float] = (3.0, 1.0),
+    wind_enabled: bool = True,
 ) -> OptimizeResult:
     """Integrate the 6-DoF state with RK45 until ground impact."""
     if initial_state is None:
@@ -153,13 +249,48 @@ def simulate_rocket(
     if y0.shape != (13,):
         raise ValueError(f"initial_state must have shape (13,), got {y0.shape}")
 
+    def dynamics(t: float, state: NDArray[np.float64]) -> NDArray[np.float64]:
+        derivative = rocket_state_derivative(
+            t,
+            state,
+            rocket,
+            surface_wind=surface_wind,
+            wind_enabled=wind_enabled,
+        )
+        if (
+            state[2] <= 1e-6
+            and state[5] >= -1e-8
+            and derivative[5] <= 0.0
+        ):
+            derivative[2] = 0.0
+            derivative[5] = 0.0
+        return derivative
+
+    def impact_event(t: float, state: NDArray[np.float64]) -> float:
+        altitude = float(state[2])
+        if (
+            t <= 0.0
+            or (altitude <= 1e-6 and state[5] >= -1e-8)
+        ):
+            return 1.0
+        return altitude
+
+    impact_event.terminal = True
+    impact_event.direction = -1
+
+    def burnout_event(t: float, _y: NDArray[np.float64]) -> float:
+        return t - rocket.burn_time
+
+    burnout_event.terminal = False
+    burnout_event.direction = 1
+
     return solve_ivp(
-        fun=lambda t, y: rocket_state_derivative(t, y, rocket),
+        fun=dynamics,
         t_span=t_span,
         y0=y0,
         method="RK45",
         rtol=1e-6,
         atol=1e-8,
-        events=ground_impact,
+        events=(impact_event, apogee_arrival, burnout_event),
         dense_output=True,
     )
