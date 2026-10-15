@@ -63,3 +63,53 @@ def test_surface_wind_at_sea_level() -> None:
     )
 
     np.testing.assert_allclose(wind, [3.0, 1.0, 0.0])
+    
+@pytest.mark.parametrize(
+    "altitude_m",
+    [25000.0, 30000.0, 50000.0, 71000.0, 86000.0],
+)
+def test_atmosphere_works_at_high_altitudes(
+    altitude_m: float,
+) -> None:
+    temp = temperature(altitude_m)
+    p = pressure(altitude_m)
+    rho = density(altitude_m)
+    sound = speed_of_sound(altitude_m)
+
+    assert np.isfinite(temp)
+    assert np.isfinite(p)
+    assert np.isfinite(rho)
+    assert np.isfinite(sound)
+
+    assert temp > 0.0
+    assert p > 0.0
+    assert rho > 0.0
+    assert sound > 0.0
+
+def test_pressure_and_density_decrease_at_high_altitudes() -> None:
+    altitudes = [20000.0, 30000.0, 50000.0, 70000.0, 86000.0]
+
+    pressures = [pressure(h) for h in altitudes]
+    densities = [density(h) for h in altitudes]
+
+    assert all(
+        higher < lower
+        for lower, higher in zip(pressures, pressures[1:])
+    )
+
+    assert all(
+        higher < lower
+        for lower, higher in zip(densities, densities[1:])
+    )
+
+def test_altitude_above_limit_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        temperature(87000.0)
+
+def test_wind_works_at_high_altitudes() -> None:
+    altitudes = np.array([30000.0, 50000.0, 86000.0])
+
+    wind = wind_velocity(altitudes)
+
+    assert wind.shape == (3, 3)
+    assert np.all(np.isfinite(wind))
