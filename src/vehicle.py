@@ -48,10 +48,12 @@ class Rocket:
             self.burn_time = self.thrust_curve.burn_time_s
         self.update(0.0)
 
-    def update(self, t: float) -> tuple[float, float]:
         t = float(t)
-        if not t >= 0.0:
-            raise ValueError(f"flight time must be >= 0 (got {t!r})")
+        if not np.isfinite(t) or t < 0.0:
+            raise ValueError(
+                f"flight time must be finite and >= 0 (got {t!r})"
+            )
+
         if self.thrust_curve is None:
             propellant_remaining_fraction = max(1.0 - t / self.burn_time, 0.0)
             thrust = self.average_thrust if t < self.burn_time else 0.0
