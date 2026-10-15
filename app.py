@@ -304,9 +304,7 @@ def _run_simulation(
         if apogee_detected
         else None
     )
-    print("APOGEE EVENT TIME:", apogee_time_s)
-    print("SIMULATION TIME SAMPLES:", time_s[-5:])
-    print("ALTITUDE SAMPLES:", altitude_m[-5:])
+
     apogee_altitude_m = (
         float(solution.y_events[1][0][2])
         if apogee_detected
@@ -557,79 +555,37 @@ def _pose_traces_at_time(
     return (body_trace, *axis_traces)
 
 
-
 def _trajectory_chart(
     result: dict[str, Any],
     telemetry: FlightTelemetry | None = None,
 ) -> go.Figure:
-    plot_time = np.asarray(result["time_s"], dtype=float).copy()
-    plot_altitude = np.asarray(result["altitude_m"], dtype=float).copy()
-    plot_speed = np.asarray(result["speed_m_s"], dtype=float).copy()
-
-    # Insert the exact apogee event into the plotted samples.
-    events = result.get("events", {})
-    apogee_time = events.get("apogee_s")
-    apogee_altitude = events.get("apogee_altitude_m")
-
-    if (
-        apogee_time is not None
-        and apogee_altitude is not None
-        and np.isfinite(apogee_time)
-        and np.isfinite(apogee_altitude)
-        and plot_time[0] <= apogee_time <= plot_time[-1]
-    ):
-        nearest_index = int(np.argmin(np.abs(plot_time - apogee_time)))
-
-        if not np.isclose(
-            plot_time[nearest_index],
-            apogee_time,
-            rtol=0.0,
-            atol=1e-9,
-        ):
-            insert_index = int(np.searchsorted(plot_time, apogee_time))
-
-            plot_time = np.insert(plot_time, insert_index, apogee_time)
-            plot_altitude = np.insert(
-                plot_altitude, insert_index, apogee_altitude
-            )
-            plot_speed = np.insert(
-                plot_speed,
-                insert_index,
-                np.interp(apogee_time, result["time_s"], result["speed_m_s"]),
-            )
-        else:
-            plot_altitude[nearest_index] = apogee_altitude
-
     figure = make_subplots(specs=[[{"secondary_y": True}]])
-
     figure.add_trace(
         go.Scatter(
-            x=plot_time,
-            y=plot_altitude,
+            x=result["time_s"],
+            y=result["altitude_m"],
             name="Altitude",
             mode="lines+markers",
             line={"color": COLOR_BLUE, "width": 2},
             marker={"size": 3},
-            customdata=plot_time,
+            customdata=result["time_s"],
             fill="tozeroy",
             fillcolor="rgba(111, 159, 200, 0.10)",
         ),
         secondary_y=False,
     )
-
     figure.add_trace(
         go.Scatter(
-            x=plot_time,
-            y=plot_speed,
+            x=result["time_s"],
+            y=result["speed_m_s"],
             name="Velocity",
             mode="lines+markers",
             line={"color": COLOR_AMBER, "width": 2},
             marker={"size": 3},
-            customdata=plot_time,
+            customdata=result["time_s"],
         ),
         secondary_y=True,
     )
-
     if telemetry is not None:
         figure.add_trace(
             go.Scatter(
@@ -646,7 +602,6 @@ def _trajectory_chart(
             ),
             secondary_y=False,
         )
-
         figure.add_trace(
             go.Scatter(
                 x=telemetry.time_s,
@@ -661,7 +616,6 @@ def _trajectory_chart(
             ),
             secondary_y=True,
         )
-
     figure.update_layout(
         template="plotly_dark",
         title="Altitude and velocity over flight time",
@@ -681,17 +635,14 @@ def _trajectory_chart(
         },
         margin={"t": 50, "b": 80, "l": 20, "r": 20},
     )
-
     figure.update_yaxes(
         title_text="Altitude (m)",
         secondary_y=False,
         rangemode="tozero",
     )
-    figure.update_yaxes(
-        title_text="Velocity (m/s)",
-        secondary_y=True,
-    )
+    figure.update_yaxes(title_text="Velocity (m/s)", secondary_y=True)
     return figure
+
 
 def _loads_chart(result: dict[str, Any]) -> go.Figure:
     figure = make_subplots(
