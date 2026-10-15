@@ -36,6 +36,10 @@ class ThrustCurve:
             raise ValueError("Thrust curve times must be nonnegative and strictly increasing.")
         if np.any(thrust < 0.0) or not np.any(thrust > 0.0):
             raise ValueError("Thrust curve must contain nonnegative thrust and a positive sample.")
+        if not np.isclose(thrust[-1], 0.0, rtol=0.0, atol=1e-9):
+            raise ValueError(
+                "Thrust at the final burnout time must be zero."
+            )
         if self.propellant_mass_kg is not None and (
             not np.isfinite(self.propellant_mass_kg) or self.propellant_mass_kg <= 0.0
         ):
@@ -62,8 +66,14 @@ class ThrustCurve:
         return float(self._cumulative_impulse_ns[-1])
 
     def thrust_at(self, time_s: float) -> float:
-        if time_s < self.times_s[0] or time_s > self.burn_time_s:
+        time_s = float(time_s)
+
+        if not np.isfinite(time_s):
+            raise ValueError("Motor time must be finite.")
+
+        if time_s < self.times_s[0] or time_s >= self.burn_time_s:
             return 0.0
+
         return float(np.interp(time_s, self.times_s, self.thrust_n))
 
     def impulse_until(self, time_s: float) -> float:
