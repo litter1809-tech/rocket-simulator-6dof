@@ -214,7 +214,7 @@ def _run_simulation(
         initial_state,
         (0.0, 180.0),
         surface_wind=surface_wind,
-        wind_enabled=False,
+        wind_enabled=True,
     )
     if not solution.success:
         raise RuntimeError(
