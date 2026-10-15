@@ -403,11 +403,11 @@ def simulate_rocket(
         altitude = float(state[2])
         vertical_velocity = float(state[5])
 
-        # Only detect impact when descending at ground level.
-        if altitude <= 0.0 and vertical_velocity < 0.0:
+        # Detect ground impact only while descending.
+        if vertical_velocity < 0.0:
             return altitude
 
-        # Stay positive until the rocket returns to the ground.
+        # Keep the event positive while ascending.
         return max(altitude, 1e-6)
 
     impact_event.terminal = True
