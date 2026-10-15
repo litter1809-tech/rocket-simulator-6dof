@@ -382,8 +382,6 @@ def simulate_rocket(
             wind_enabled=wind_enabled,
         )
 
-        # Keep a stationary vehicle from numerically moving below ground
-        # before upward launch motion begins.
         if (
             state[2] <= 1e-6
             and state[5] >= -1e-8
@@ -393,8 +391,6 @@ def simulate_rocket(
             derivative[5] = 0.0
 
         return derivative
-
-    
     
     def impact_event(
         t: float,
