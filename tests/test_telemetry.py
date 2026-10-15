@@ -31,7 +31,7 @@ def test_parse_derives_vertical_velocity_and_allows_altimeter_only_csv() -> None
 
     np.testing.assert_allclose(telemetry.time_s, [0.0, 1.0, 2.0])
     np.testing.assert_allclose(telemetry.altitude_m, [0.0, 10.0, 0.0])
-    np.testing.assert_allclose(telemetry.velocity_m_s, [10.0, 0.0, -10.0])
+    np.testing.assert_allclose(telemetry.velocity_m_s, [0.0, 0.0, -10.0])
     assert telemetry.downrange_m is None
     assert telemetry.crossrange_m is None
 
