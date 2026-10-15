@@ -1096,7 +1096,7 @@ def _position_3d_chart(
         animation_options = {
             "frame": {
                 "duration": max(1, round(frame_interval_ms)),
-                "redraw": True,
+                "redraw": False,
             },
             "transition": {"duration": 0},
             "mode": "immediate",
@@ -1208,6 +1208,13 @@ plot.on('plotly_relayout', (update) => {
     }
 });
 
+// Preserve rotations immediately while replay frames continue to update data.
+plot.on('plotly_relayouting', (update) => {
+    if (Object.keys(update).some((key) => key.startsWith('scene.camera'))) {
+        savedCamera = readCamera();
+    }
+});
+
 plot.on('plotly_afterplot', () => {
     window.requestAnimationFrame(() => {
         if (restoringCamera || cameraGestureActive) {
@@ -1228,7 +1235,7 @@ plot.on('plotly_afterplot', () => {
             full_html=False,
             include_plotlyjs=True,
             post_script=camera_sync_script,
-            config={"scrollZoom": True},
+            config={"scrollZoom": True, "displaylogo": False},
             auto_play=False,
             div_id="ground-station-replay",
         ),
@@ -2051,20 +2058,12 @@ with ground_station_tab:
         st.caption(
             "The enlarged rocket model follows the X/Y/Z path with attached red, "
             "green, and blue body-axis vectors (coordinates remain in metres). "
+            "Narrow axes are expanded visually for readability; drag to rotate the "
+            "view at any time, including during replay. "
             "Attitude is estimated; simplified aerodynamics, rotational damping, "
             "rail restraint, and recovery systems are not fully modeled."
         )
-        playback_controls = st.columns((1, 1))
-        equal_proportional_scale = playback_controls[0].checkbox(
-            "Enforce Equal Proportional Scale (1:1)",
-            value=False,
-            help=(
-                "Use a data-derived aspect ratio, limiting the longest displayed "
-                "axis to 3× the shortest so narrow flight paths remain inspectable."
-            ),
-            key="ground_station_equal_proportional_scale",
-        )
-        playback_speed = playback_controls[1].selectbox(
+        playback_speed = st.selectbox(
             "Playback speed",
             options=(0.5, 1.0, 2.0, 5.0),
             index=1,
@@ -2080,7 +2079,7 @@ with ground_station_tab:
                 ),
                 animated=True,
                 playback_speed=float(playback_speed),
-                equal_proportional_scale=equal_proportional_scale,
+                equal_proportional_scale=True,
             )
         )
         _render_ground_station_inspector(
