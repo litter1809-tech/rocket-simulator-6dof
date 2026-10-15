@@ -50,6 +50,20 @@ class Rocket:
         if self.thrust_curve is not None:
             self.burn_time = self.thrust_curve.burn_time_s
 
+            motor_propellant_mass = self.thrust_curve.propellant_mass_kg
+
+            if motor_propellant_mass is not None and not np.isclose(
+                self.propellant_mass,
+                motor_propellant_mass,
+                rtol=0.01,
+                atol=1e-6,
+            ):
+                raise ValueError(
+                    "Rocket propellant_mass does not match the motor file: "
+                    f"{self.propellant_mass:.6g} kg vs "
+                    f"{motor_propellant_mass:.6g} kg."
+                )
+
         self.update(0.0)
 
     def update(self, t: float) -> tuple[float, float]:
