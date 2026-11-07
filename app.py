@@ -39,7 +39,114 @@ from src.vehicle import Rocket
 
 st.set_page_config(
     page_title="6-DOF Rocket Simulator",
+    page_icon="🚀",
     layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.markdown(
+    """
+    <style>
+      :root {
+        --navy-950: #07111f;
+        --navy-900: #0c1b2d;
+        --navy-800: #10263e;
+        --steel-300: #b8c8d8;
+        --cyan-400: #55b6d8;
+        --amber-400: #e6ae62;
+      }
+      [data-testid="stAppViewContainer"] {
+        background: var(--navy-950);
+        color: #edf3f8;
+      }
+      [data-testid="stHeader"] {
+        background: rgba(7, 17, 31, 0.92);
+      }
+      [data-testid="stSidebar"] {
+        background: var(--navy-900);
+        border-right: 1px solid rgba(184, 200, 216, 0.14);
+      }
+      [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1.2rem;
+      }
+      .block-container {
+        max-width: 1520px;
+        padding-top: 1.5rem;
+        padding-bottom: 3rem;
+      }
+      .sim-hero {
+        background: linear-gradient(110deg, #102943 0%, #0c1b2d 58%, #111c2a 100%);
+        border: 1px solid rgba(85, 182, 216, 0.30);
+        border-left: 4px solid var(--cyan-400);
+        border-radius: 10px;
+        margin: 0 0 1.4rem;
+        padding: 1.35rem 1.6rem 1.25rem;
+      }
+      .sim-eyebrow {
+        color: var(--cyan-400);
+        font-family: "SFMono-Regular", Consolas, monospace;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.13em;
+        margin-bottom: 0.35rem;
+      }
+      .sim-hero h1 {
+        color: #f7fbff;
+        font-size: clamp(1.65rem, 3vw, 2.35rem);
+        font-weight: 650;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        margin: 0;
+      }
+      .sim-hero p {
+        color: var(--steel-300);
+        font-size: 0.98rem;
+        margin: 0.65rem 0 0;
+        max-width: 68rem;
+      }
+      [data-testid="stMetric"] {
+        background: var(--navy-900);
+        border: 1px solid rgba(184, 200, 216, 0.15);
+        border-radius: 8px;
+        padding: 0.8rem 0.85rem;
+      }
+      [data-testid="stMetricLabel"] {
+        color: var(--steel-300);
+        font-size: 0.76rem;
+        letter-spacing: 0.035em;
+        text-transform: uppercase;
+      }
+      [data-testid="stMetricValue"] {
+        color: #f7fbff;
+        font-weight: 650;
+      }
+      [data-testid="stTabs"] button {
+        color: var(--steel-300);
+        font-size: 0.84rem;
+        font-weight: 600;
+      }
+      [data-testid="stTabs"] button[aria-selected="true"] {
+        color: #f7fbff;
+      }
+      [data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+        background-color: var(--cyan-400);
+      }
+      [data-testid="stSidebar"] .stButton > button,
+      [data-testid="stSidebar"] [data-testid="stFileUploader"] {
+        border-radius: 6px;
+      }
+      .stButton > button[kind="primary"] {
+        background: #1882a8;
+        border-color: #259bc3;
+        font-weight: 650;
+      }
+      .stButton > button[kind="primary"]:hover {
+        background: #2497bd;
+        border-color: #55b6d8;
+      }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 COLOR_BLUE = "#6F9FC8"
@@ -1620,12 +1727,16 @@ def _dispersion_chart(
     return figure
 
 
-st.title("6-DOF High-Power Rocket Simulation & Flight Analysis Engine")
-st.markdown("### Developed by **Tegan Broody** | Ridley High School")
-st.markdown("---")
-st.caption(
-    "Explore a numerically integrated rocket flight using the project’s 6-DOF "
-    "dynamics, aerodynamic loads, and standard-atmosphere model."
+st.markdown(
+    """
+    <section class="sim-hero">
+      <div class="sim-eyebrow">FLIGHT DYNAMICS WORKBENCH</div>
+      <h1>6-DOF Rocket Trajectory Simulator</h1>
+      <p>Numerically integrated flight analysis with atmosphere, propulsion, loads,
+      dispersion, telemetry comparison, and a 3D ground-station replay.</p>
+    </section>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.sidebar.title("Vehicle configuration")
