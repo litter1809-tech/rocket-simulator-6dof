@@ -196,6 +196,85 @@ def _stability_history(
     return cg_m, margin_calibers
 
 
+def _stability_chart(result: dict[str, Any]) -> go.Figure:
+    """Plot the assumed CG/CP geometry and resulting static margin."""
+    time_s = np.asarray(result["time_s"], dtype=float)
+    cg_m, margin_calibers = _stability_history(result)
+    center_of_pressure_m = float(
+        result["stability"]["center_of_pressure_m"]
+    )
+
+    figure = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.15,
+        subplot_titles=(
+            "Longitudinal reference locations",
+            "Static margin",
+        ),
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=time_s,
+            y=cg_m,
+            mode="lines",
+            name="Center of gravity",
+            line={"color": COLOR_BLUE, "width": 3},
+            hovertemplate="Time: %{x:.2f} s<br>CG: %{y:.3f} m from nose<extra></extra>",
+        ),
+        row=1,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=time_s,
+            y=np.full(time_s.shape, center_of_pressure_m),
+            mode="lines",
+            name="Center of pressure (assumed)",
+            line={"color": COLOR_AMBER, "width": 2, "dash": "dash"},
+            hovertemplate="Time: %{x:.2f} s<br>CP: %{y:.3f} m from nose<extra></extra>",
+        ),
+        row=1,
+        col=1,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=time_s,
+            y=margin_calibers,
+            mode="lines",
+            name="Static margin",
+            line={"color": COLOR_GREEN, "width": 3},
+            fill="tozeroy",
+            fillcolor="rgba(121, 168, 155, 0.12)",
+            hovertemplate="Time: %{x:.2f} s<br>Margin: %{y:.2f} calibers<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    figure.add_hline(
+        y=1.0,
+        line={"color": COLOR_RED, "dash": "dot"},
+        annotation_text="1.0-caliber reference",
+        annotation_position="bottom right",
+        row=2,
+        col=1,
+    )
+    figure.update_layout(
+        template="plotly_dark",
+        title="Estimated longitudinal stability",
+        font={"family": "Arial, sans-serif", "size": 12},
+        title_font={"size": 16},
+        hovermode="x unified",
+        legend={"orientation": "h", "y": 1.08, "x": 0.0},
+        margin={"t": 85, "b": 50, "l": 55, "r": 25},
+    )
+    figure.update_yaxes(title_text="Distance from nose (m)", row=1, col=1)
+    figure.update_yaxes(title_text="Static margin (calibers)", row=2, col=1)
+    figure.update_xaxes(title_text="Flight time (s)", row=2, col=1)
+    return figure
+
+
 def _run_simulation(
     specs: dict[str, float],
     thrust_curve: ThrustCurve | None = None,
