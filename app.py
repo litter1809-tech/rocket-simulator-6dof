@@ -1322,7 +1322,8 @@ plot.on('plotly_afterplot', () => {
         height=760,
         scrolling=False,
     )
-
+    
+# Made by Tegan Broody Ridley Highschool, litter1809-tech on github, project link: https://github.com/litter1809-tech/rocket-simulator-6dof
 
 def _telemetry_at_time(
     result: dict[str, Any],
