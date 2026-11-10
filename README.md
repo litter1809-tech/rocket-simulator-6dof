@@ -6,6 +6,9 @@
 
 A Python simulation for modeling 6-DOF rocket flight dynamics. I built this to move away from messy single-script prototypes and structure it as a clean, tested engineering package. It handles altitude-dependent atmospheric physics, variable mass depletion during motor burn, and adaptive numerical integration.
 
+**Interactive website**
+https://tbrocket.streamlit.app 
+
 ## Interactive dashboard
 
 The included Streamlit application is an engineering workspace for configuring a
@@ -25,7 +28,7 @@ locally with `streamlit run app.py` for the interactive dashboard and 3D replay.
 | Ground station | Animated vehicle replay with rotatable 3D view and body-axis indicators |
 | Engineering review | Aerodynamic loads, estimated stability, motor data, dispersion, and flight-data validation |
 
-## Features
+## Program Features
 
 - **Modular Layout:** Code is split into a dedicated `src/` directory separating the environment, vehicle specs, equations of motion, and plotting tools.
 - **Atmospheric Model:** Uses the 1976 US Standard Atmosphere to calculate temperature, pressure, density, and speed of sound at varying altitudes.
